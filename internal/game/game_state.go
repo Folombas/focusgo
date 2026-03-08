@@ -28,28 +28,32 @@ type GameState struct {
 	IsPlaying    bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	
+	// Бонусы от навыков
+	SkillBonuses map[string]int // focus, willpower, knowledge, money, dopamine
 }
 
 // NewGameState создаёт новое состояние игры
 func NewGameState(chatID int64, name string) *GameState {
 	return &GameState{
-		ChatID:      chatID,
-		Name:        name,
-		Level:       1,
-		Experience:  0,
-		NextLevelXP: 100,
-		GoKnowledge: 40,
-		Focus:       70,
-		Willpower:   65,
-		Money:       500,
-		Dopamine:    200,
-		PlayTime:    0,
-		DaysPlayed:  1,
-		CurrentDay:  1,
-		CurrentHour: 8,
-		IsPlaying:   true,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ChatID:       chatID,
+		Name:         name,
+		Level:        1,
+		Experience:   0,
+		NextLevelXP:  100,
+		GoKnowledge:  40,
+		Focus:        70,
+		Willpower:    65,
+		Money:        500,
+		Dopamine:     200,
+		PlayTime:     0,
+		DaysPlayed:   1,
+		CurrentDay:   1,
+		CurrentHour:  8,
+		IsPlaying:    true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		SkillBonuses: make(map[string]int),
 	}
 }
 
@@ -111,6 +115,45 @@ func (s *GameState) SaveGameState() error {
 	)
 
 	return err
+}
+
+// ApplySkillBonuses применяет бонусы от дерева навыков
+func (s *GameState) ApplySkillBonuses(tree *SkillTree) {
+	if tree == nil {
+		return
+	}
+
+	// Сохраняем бонусы
+	s.SkillBonuses = tree.GetTotalBonuses()
+}
+
+// GetFocus возвращает фокус с учётом бонусов
+func (s *GameState) GetFocus() int {
+	return s.Focus + s.SkillBonuses["focus"]
+}
+
+// GetWillpower возвращает силу воли с учётом бонусов
+func (s *GameState) GetWillpower() int {
+	return s.Willpower + s.SkillBonuses["willpower"]
+}
+
+// GetGoKnowledge возвращает знание Go с учётом бонусов
+func (s *GameState) GetGoKnowledge() int {
+	knowledge := s.GoKnowledge + s.SkillBonuses["knowledge"]
+	if knowledge > 100 {
+		knowledge = 100
+	}
+	return knowledge
+}
+
+// GetMoney возвращает деньги с учётом бонусов
+func (s *GameState) GetMoney() int {
+	return s.Money + s.SkillBonuses["money"]
+}
+
+// GetDopamine возвращает дофамин с учётом бонусов
+func (s *GameState) GetDopamine() int {
+	return s.Dopamine + s.SkillBonuses["dopamine"]
 }
 
 // AddExperience добавляет опыт и проверяет повышение уровня
@@ -337,10 +380,23 @@ func (s *GameState) FinalBattle(bossName string, bossPower int) (bool, string) {
 
 // GetStatus возвращает строку статуса
 func (s *GameState) GetStatus() string {
+	// Получаем значения с бонусами
+	focus := s.GetFocus()
+	willpower := s.GetWillpower()
+	knowledge := s.GetGoKnowledge()
+	money := s.GetMoney()
+	dopamine := s.GetDopamine()
+
+	// Формируем строку бонусов
+	bonuses := ""
+	if s.SkillBonuses["focus"] > 0 {
+		bonuses += fmt.Sprintf(" (+%d)", s.SkillBonuses["focus"])
+	}
+
 	return fmt.Sprintf(`👤 <b>%s</b>
 ━━━━━━━━━━━━━━━━━━━━
 🏆 Уровень: %d (Опыт: %d/%d)
-📚 Знание Go: %d/100
+📚 Знание Go: %d/100%s
 🎯 Фокус: %d%%
 💪 Сила воли: %d%%
 💰 Деньги: %d₽
@@ -348,7 +404,7 @@ func (s *GameState) GetStatus() string {
 
 📅 День: %d | ⏰ %02d:00`,
 		s.Name, s.Level, s.Experience, s.NextLevelXP,
-		s.GoKnowledge, s.Focus, s.Willpower, s.Money, s.Dopamine,
+		knowledge, bonuses, focus, willpower, money, dopamine,
 		s.CurrentDay, s.CurrentHour)
 }
 

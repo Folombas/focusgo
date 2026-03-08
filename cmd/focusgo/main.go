@@ -162,12 +162,27 @@ func sendStart(chatID int64, name string) {
 		qs := game.NewQuestSystem(chatID)
 		qs.GenerateDailyQuests()
 		questSystems[chatID] = qs
+		
+		// Создаём дерево навыков
+		tree := game.NewSkillTree(chatID)
+		tree.SaveSkillTree()
+		skillTrees[chatID] = tree
+		
+		// Применяем бонусы
+		state.ApplySkillBonuses(tree)
 	} else {
 		gameStates[chatID] = state
 		// Загружаем квесты
 		qs := game.NewQuestSystem(chatID)
 		qs.GenerateDailyQuests()
 		questSystems[chatID] = qs
+		
+		// Загружаем дерево навыков и применяем бонусы
+		tree, _ := game.LoadSkillTree(chatID)
+		if tree != nil {
+			skillTrees[chatID] = tree
+			state.ApplySkillBonuses(tree)
+		}
 	}
 
 	text := fmt.Sprintf(`🎮 <b>FOCUSGO — Temptation Simulator</b>
@@ -395,12 +410,41 @@ func showProfile(chatID int64) {
 		return
 	}
 
+	// Загружаем дерево навыков для применения бонусов
+	tree, _ := game.LoadSkillTree(chatID)
+	if tree != nil {
+		state.ApplySkillBonuses(tree)
+		skillTrees[chatID] = tree
+	}
+
+	// Формируем строку с бонусами
+	bonusText := ""
+	if state.SkillBonuses["focus"] > 0 {
+		bonusText += fmt.Sprintf("🎯 Фокус: +%d\n", state.SkillBonuses["focus"])
+	}
+	if state.SkillBonuses["willpower"] > 0 {
+		bonusText += fmt.Sprintf("💪 Сила воли: +%d\n", state.SkillBonuses["willpower"])
+	}
+	if state.SkillBonuses["knowledge"] > 0 {
+		bonusText += fmt.Sprintf("📚 Знание Go: +%d\n", state.SkillBonuses["knowledge"])
+	}
+	if state.SkillBonuses["money"] > 0 {
+		bonusText += fmt.Sprintf("💰 Деньги: +%d\n", state.SkillBonuses["money"])
+	}
+	if state.SkillBonuses["dopamine"] > 0 {
+		bonusText += fmt.Sprintf("✨ Дофамин: +%d\n", state.SkillBonuses["dopamine"])
+	}
+
+	if bonusText != "" {
+		bonusText = "\n🌳 <b>БОНУСЫ ОТ НАВЫКОВ:</b>\n" + bonusText
+	}
+
 	text := fmt.Sprintf(`👤 <b>ПРОФИЛЬ ИГРОКА</b>
 ━━━━━━━━━━━━━━━━━━━━
 
 %s
 
-🏅 Рейтинг: %s`, state.GetStatus(), state.GetRating())
+🏅 Рейтинг: %s%s`, state.GetStatus(), state.GetRating(), bonusText)
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
@@ -543,6 +587,15 @@ func handleUpgradeSkill(chatID int64, skillID string) {
 	
 	if success {
 		tree.SaveSkillTree()
+		
+		// Применяем бонусы к игроку
+		state, _ := game.LoadGameState(chatID)
+		if state != nil {
+			state.ApplySkillBonuses(tree)
+			state.SaveGameState()
+			gameStates[chatID] = state
+		}
+		
 		bot.Send(tgbotapi.NewMessage(chatID, msg))
 		// Показываем обновлённое дерево
 		showSkills(chatID)
