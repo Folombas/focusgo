@@ -51,6 +51,26 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version: 4,
+		Name:    "add_notification_settings",
+		Up: func() error {
+			query := `
+				CREATE TABLE IF NOT EXISTS notification_settings (
+					chat_id INTEGER PRIMARY KEY,
+					enabled INTEGER DEFAULT 1,
+					daily_quests_enabled INTEGER DEFAULT 1,
+					final_battle_enabled INTEGER DEFAULT 1,
+					unfinished_enabled INTEGER DEFAULT 1,
+					quests_hour INTEGER DEFAULT 9,
+					battle_hour INTEGER DEFAULT 20,
+					FOREIGN KEY (chat_id) REFERENCES players(chat_id) ON DELETE CASCADE
+				)
+			`
+			_, err := DB.Exec(query)
+			return err
+		},
+	},
 }
 
 // InitMigrations инициализирует таблицу миграций и применяет новые

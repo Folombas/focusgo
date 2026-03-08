@@ -22,12 +22,17 @@ func main() {
 	}
 	defer CloseDB()
 
+	// Инициализация уведомлений
+	InitNotifications()
+	defer StopNotifications()
+
 	// Обработка сигналов для корректного завершения
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		log.Println("🛑 Получен сигнал завершения, закрываем БД...")
+		StopNotifications()
 		CloseDB()
 		os.Exit(0)
 	}()
@@ -107,6 +112,8 @@ func handleCommand(message *tgbotapi.Message) {
 		sendQuests(chatID)
 	case "leaderboard":
 		sendLeaderboard(chatID)
+	case "remind":
+		sendRemindSettings(chatID)
 	default:
 		sendUnknownCommand(chatID)
 	}
@@ -128,6 +135,7 @@ func sendStartMessage(chatID int64) {
 /quests — Ежедневные квесты
 /stats — Статистика
 /leaderboard — Таблица лидеров
+/remind — Настройки уведомлений
 /save — Сохранить прогресс
 /help — Помощь
 
@@ -163,6 +171,7 @@ func sendHelp(chatID int64) {
 /quests — Ежедневные квесты
 /stats — Расширенная статистика
 /leaderboard — Таблица лидеров
+/remind — Настройки уведомлений
 /save — Сохранить прогресс
 /load — Загрузить сохранение
 /help — Эта справка
@@ -174,6 +183,13 @@ func sendHelp(chatID int64) {
 4. Выполняй ежедневные квесты
 5. Улучшай навыки
 6. Сохраняй прогресс
+
+<b>Уведомления:</b>
+• 9:00 — Напоминание о квестах
+• 20:00 — Напоминание о финальной битве
+• 22:00 — Напоминание о незавершённых квестах
+
+Настрой уведомления командой /remind
 
 <b>Советы:</b>
 • Изучение Go даёт опыт и очки навыков
@@ -234,6 +250,14 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 		showMainMenu(chatID)
 	case "final_battle_fight":
 		handleFinalBattle(chatID)
+	case "notif_toggle_all":
+		handleToggleAllNotifications(chatID)
+	case "notif_toggle_quests":
+		handleToggleQuestsNotifications(chatID)
+	case "notif_toggle_battle":
+		handleToggleBattleNotifications(chatID)
+	case "notif_toggle_unfinished":
+		handleToggleUnfinishedNotifications(chatID)
 	}
 
 	// Обработка улучшения навыков

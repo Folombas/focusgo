@@ -703,6 +703,128 @@ func sendNoGameMessage(chatID int64) {
 	bot.Send(msg)
 }
 
+// sendRemindSettings отправляет настройки уведомлений
+func sendRemindSettings(chatID int64) {
+	settings := NotificationScheduler.getSettings(chatID)
+
+	enabledStatus := "✅"
+	if !settings.Enabled {
+		enabledStatus = "❌"
+	}
+
+	text := fmt.Sprintf(`🔔 <b>НАСТРОЙКИ УВЕДОМЛЕНИЙ</b>
+━━━━━━━━━━━━━━━━━━━━
+
+%s <b>Уведомления:</b> %s
+
+📋 <b>Типы уведомлений:</b>
+• Ежедневные квесты (9:00)
+• Финальная битва (20:00)
+• Незавершённые квесты (22:00)
+
+<b>Управление:</b>
+Нажми на кнопки ниже, чтобы изменить настройки.`,
+		enabledStatus,
+		map[bool]string{true: "Включены", false: "Выключены"}[settings.Enabled])
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = createRemindKeyboard(settings)
+
+	bot.Send(msg)
+}
+
+// handleToggleAllNotifications переключает все уведомления
+func handleToggleAllNotifications(chatID int64) {
+	settings := NotificationScheduler.getSettings(chatID)
+	settings.Enabled = !settings.Enabled
+	settings.DailyQuestsEnabled = settings.Enabled
+	settings.FinalBattleEnabled = settings.Enabled
+	settings.UnfinishedEnabled = settings.Enabled
+
+	NotificationScheduler.saveSettings(settings)
+
+	text := fmt.Sprintf("🔔 Уведомления %s", map[bool]string{true: "включены", false: "выключены"}[settings.Enabled])
+	sendCallbackAnswer(chatID, text)
+	sendRemindSettings(chatID)
+}
+
+// handleToggleQuestsNotifications переключает уведомления о квестах
+func handleToggleQuestsNotifications(chatID int64) {
+	settings := NotificationScheduler.getSettings(chatID)
+	settings.DailyQuestsEnabled = !settings.DailyQuestsEnabled
+
+	NotificationScheduler.saveSettings(settings)
+
+	text := fmt.Sprintf("📋 Уведомления о квестах %s", map[bool]string{true: "включены", false: "выключены"}[settings.DailyQuestsEnabled])
+	sendCallbackAnswer(chatID, text)
+	sendRemindSettings(chatID)
+}
+
+// handleToggleBattleNotifications переключает уведомления о битве
+func handleToggleBattleNotifications(chatID int64) {
+	settings := NotificationScheduler.getSettings(chatID)
+	settings.FinalBattleEnabled = !settings.FinalBattleEnabled
+
+	NotificationScheduler.saveSettings(settings)
+
+	text := fmt.Sprintf("⚔️  Уведомления о битве %s", map[bool]string{true: "включены", false: "выключены"}[settings.FinalBattleEnabled])
+	sendCallbackAnswer(chatID, text)
+	sendRemindSettings(chatID)
+}
+
+// handleToggleUnfinishedNotifications переключает уведомления о незавершённых квестах
+func handleToggleUnfinishedNotifications(chatID int64) {
+	settings := NotificationScheduler.getSettings(chatID)
+	settings.UnfinishedEnabled = !settings.UnfinishedEnabled
+
+	NotificationScheduler.saveSettings(settings)
+
+	text := fmt.Sprintf("⏰ Уведомления о незавершённых квестах %s", map[bool]string{true: "включены", false: "выключены"}[settings.UnfinishedEnabled])
+	sendCallbackAnswer(chatID, text)
+	sendRemindSettings(chatID)
+}
+
+// sendCallbackAnswer отправляет ответ на callback
+func sendCallbackAnswer(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	bot.Send(msg)
+}
+
+// createRemindKeyboard создает клавиатуру настроек уведомлений
+func createRemindKeyboard(settings *NotificationSettings) tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				map[bool]string{true: "✅", false: "❌"}[settings.Enabled]+" Уведомления",
+				"notif_toggle_all",
+			),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				map[bool]string{true: "✅", false: "❌"}[settings.DailyQuestsEnabled]+" Квесты (9:00)",
+				"notif_toggle_quests",
+			),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				map[bool]string{true: "✅", false: "❌"}[settings.FinalBattleEnabled]+" Битва (20:00)",
+				"notif_toggle_battle",
+			),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				map[bool]string{true: "✅", false: "❌"}[settings.UnfinishedEnabled]+" Незавершённые (22:00)",
+				"notif_toggle_unfinished",
+			),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "main_menu"),
+		),
+	)
+}
+
 // sendLeaderboard отправляет таблицу лидеров
 func sendLeaderboard(chatID int64) {
 	leaderboard, err := GetLeaderboard(10)
