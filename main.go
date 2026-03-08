@@ -4,16 +4,34 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var (
 	bot     *tgbotapi.BotAPI
-	players = make(map[int64]*Player) // Хранилище игроков по chatID
+	players = make(map[int64]*Player) // Кэш игроков в памяти
 )
 
 func main() {
+	// Инициализация базы данных
+	if err := InitDB("focusgo.db"); err != nil {
+		log.Fatalf("❌ Ошибка инициализации БД: %v", err)
+	}
+	defer CloseDB()
+
+	// Обработка сигналов для корректного завершения
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		log.Println("🛑 Получен сигнал завершения, закрываем БД...")
+		CloseDB()
+		os.Exit(0)
+	}()
+
 	// Получаем токен из переменной окружения или используем заглушку
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if token == "" {
@@ -87,6 +105,8 @@ func handleCommand(message *tgbotapi.Message) {
 		sendSkills(chatID)
 	case "quests":
 		sendQuests(chatID)
+	case "leaderboard":
+		sendLeaderboard(chatID)
 	default:
 		sendUnknownCommand(chatID)
 	}
@@ -107,6 +127,7 @@ func sendStartMessage(chatID int64) {
 /skills — Дерево навыков
 /quests — Ежедневные квесты
 /stats — Статистика
+/leaderboard — Таблица лидеров
 /save — Сохранить прогресс
 /help — Помощь
 
@@ -141,6 +162,7 @@ func sendHelp(chatID int64) {
 /skills — Дерево навыков
 /quests — Ежедневные квесты
 /stats — Расширенная статистика
+/leaderboard — Таблица лидеров
 /save — Сохранить прогресс
 /load — Загрузить сохранение
 /help — Эта справка
@@ -192,14 +214,10 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 		sendQuests(chatID)
 	case "show_stats":
 		sendStats(chatID)
-	case "study_go":
-		handleStudyGo(chatID)
 	case "study_go_30":
 		handleStudyGo30(chatID)
 	case "study_go_60":
 		handleStudyGo60(chatID)
-	case "rest":
-		handleRest(chatID)
 	case "rest_15":
 		handleRest15(chatID)
 	case "rest_30":

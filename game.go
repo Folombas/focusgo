@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -9,15 +10,49 @@ import (
 
 // startGame начинает новую игру
 func startGame(chatID int64, name string) {
+	// Сначала пробуем загрузить из БД
+	existingPlayer, err := LoadPlayer(chatID)
+	if err != nil {
+		log.Printf("Ошибка загрузки игрока: %v", err)
+	}
+
+	if existingPlayer != nil {
+		// Игрок найден, загружаем его
+		players[chatID] = existingPlayer
+		text := fmt.Sprintf(`🎮 <b>ИГРА ЗАГРУЖЕНА!</b>
+
+👋 С возвращением, %s!
+
+Твой прогресс загружен из базы данных.
+Продолжаем путь к становлению Go-разработчика!
+
+%s`,
+			name,
+			existingPlayer.DisplayStatus(),
+		)
+
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ParseMode = "HTML"
+		msg.ReplyMarkup = createGameKeyboard(existingPlayer)
+
+		bot.Send(msg)
+		return
+	}
+
 	// Создаем нового игрока
 	player := NewPlayer(chatID, name)
 	players[chatID] = player
+
+	// Сохраняем в БД
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения игрока: %v", err)
+	}
 
 	text := fmt.Sprintf(`🎮 <b>НОВАЯ ИГРА НАЧАТА!</b>
 
 👋 Привет, %s!
 
-Ты начинаешь свой путь к становлению Go-разработчиком.
+Ты начинаешь свой путь к становлению Go-разработчика.
 Твоя цель — сопротивляться искушениям и изучить Go!
 
 %s
@@ -66,62 +101,6 @@ func createGameKeyboard(player *Player) tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
-// handleStudyGo обрабатывает изучение Go
-func handleStudyGo(chatID int64) {
-	player := players[chatID]
-	if player == nil {
-		sendNoGameMessage(chatID)
-		return
-	}
-
-	// По умолчанию 30 минут
-	result := player.StudyGo(30)
-	player.PlayTime += 30
-	player.Hour += 1
-
-	if player.Hour >= 24 {
-		player.Hour = 8
-		player.CurrentDay++
-	}
-
-	msg := tgbotapi.NewMessage(chatID, result)
-	msg.ParseMode = "HTML"
-	msg.ReplyMarkup = createGameKeyboard(player)
-
-	bot.Send(msg)
-
-	// Проверяем случайные события
-	checkRandomEvents(chatID, player)
-
-	// Обновляем статус
-	updatePlayerStatus(chatID, player)
-}
-
-// handleRest обрабатывает отдых
-func handleRest(chatID int64) {
-	player := players[chatID]
-	if player == nil {
-		sendNoGameMessage(chatID)
-		return
-	}
-
-	// По умолчанию 15 минут
-	result := player.Rest(15)
-	player.PlayTime += 15
-	player.Hour += 1
-
-	if player.Hour >= 24 {
-		player.Hour = 8
-		player.CurrentDay++
-	}
-
-	msg := tgbotapi.NewMessage(chatID, result)
-	msg.ParseMode = "HTML"
-	msg.ReplyMarkup = createGameKeyboard(player)
-
-	bot.Send(msg)
-}
-
 // handleStudyGo30 обрабатывает изучение Go 30 минут
 func handleStudyGo30(chatID int64) {
 	player := players[chatID]
@@ -137,6 +116,11 @@ func handleStudyGo30(chatID int64) {
 	if player.Hour >= 24 {
 		player.Hour = 8
 		player.CurrentDay++
+	}
+
+	// Сохраняем в БД после каждого действия
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
 	}
 
 	msg := tgbotapi.NewMessage(chatID, result)
@@ -163,6 +147,11 @@ func handleStudyGo60(chatID int64) {
 	if player.Hour >= 24 {
 		player.Hour = 8
 		player.CurrentDay++
+	}
+
+	// Сохраняем в БД
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
 	}
 
 	msg := tgbotapi.NewMessage(chatID, result)
@@ -192,6 +181,11 @@ func handleRest15(chatID int64) {
 		player.CurrentDay++
 	}
 
+	// Сохраняем в БД
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
+	}
+
 	msg := tgbotapi.NewMessage(chatID, result)
 	msg.ParseMode = "HTML"
 	msg.ReplyMarkup = createGameKeyboard(player)
@@ -214,6 +208,11 @@ func handleRest30(chatID int64) {
 	if player.Hour >= 24 {
 		player.Hour = 8
 		player.CurrentDay++
+	}
+
+	// Сохраняем в БД
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
 	}
 
 	msg := tgbotapi.NewMessage(chatID, result)
@@ -248,6 +247,11 @@ func handleSkillUpgrade(chatID int64, skillID string) {
 			skill.Level,
 			skill.BonusValue,
 			translateBonusType(skill.BonusType))
+
+		// Сохраняем в БД
+		if err := SavePlayer(player); err != nil {
+			log.Printf("Ошибка сохранения: %v", err)
+		}
 
 		msg := tgbotapi.NewMessage(chatID, text)
 		msg.ParseMode = "HTML"
@@ -379,12 +383,25 @@ func handleFinalBattle(chatID int64) {
 	msg.ParseMode = "HTML"
 
 	// Завершаем день
-	player.Quests.ClaimRewards()
+	questsCompleted := player.Quests.ClaimRewards()
 	player.CurrentDay++
 	player.Hour = 8
 
+	// Сохраняем сессию
+	score := player.CalculateScore()
+	saveGameSession(chatID, player.CurrentDay-1, score, player.PlayTime, won, questsCompleted)
+
+	// Сохраняем серию дней
+	player.Quests.CheckDayStreak(true)
+	saveDayStreak(player)
+
 	// Генерируем новые квесты
 	player.Quests.GenerateDailyQuests()
+
+	// Сохраняем игрока
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
+	}
 
 	msg.ReplyMarkup = createGameKeyboard(player)
 	bot.Send(msg)
@@ -403,6 +420,11 @@ func checkRandomEvents(chatID int64, player *Player) {
 		msg := tgbotapi.NewMessage(chatID, result)
 		msg.ParseMode = "HTML"
 		bot.Send(msg)
+
+		// Сохраняем после искушения
+		if err := SavePlayer(player); err != nil {
+			log.Printf("Ошибка сохранения: %v", err)
+		}
 	}
 
 	// 30% шанс мотивации
@@ -423,6 +445,11 @@ func checkRandomEvents(chatID int64, player *Player) {
 		msg := tgbotapi.NewMessage(chatID, text)
 		msg.ParseMode = "HTML"
 		bot.Send(msg)
+
+		// Сохраняем после мотивации
+		if err := SavePlayer(player); err != nil {
+			log.Printf("Ошибка сохранения: %v", err)
+		}
 	}
 }
 
@@ -585,12 +612,23 @@ func saveGame(chatID int64) {
 		return
 	}
 
-	// В Telegram-версии прогресс сохраняется автоматически в базе данных
-	// Здесь можно реализовать экспорт в файл или облако
+	// Сохраняем в БД
+	if err := SavePlayer(player); err != nil {
+		log.Printf("Ошибка сохранения: %v", err)
+		text := `❌ <b>ОШИБКА СОХРАНЕНИЯ!</b>
+
+Произошла ошибка при сохранении прогресса.`
+
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ParseMode = "HTML"
+		bot.Send(msg)
+		return
+	}
 
 	text := `💾 <b>ПРОГРЕСС СОХРАНЁН!</b>
 
-Ваш прогресс автоматически сохраняется после каждого действия.
+Ваш прогресс сохранён в базе данных.
+Вы можете продолжить игру в любой момент!
 
 📊 Текущий статус:
 ` + player.DisplayStatus()
@@ -602,15 +640,47 @@ func saveGame(chatID int64) {
 
 // loadGame загружает игру
 func loadGame(chatID int64) {
-	// В полной версии здесь будет загрузка из базы данных
-	text := `🔄 <b>ЗАГРУЗКА...</b>
+	player, err := LoadPlayer(chatID)
+	if err != nil {
+		text := `❌ <b>ОШИБКА ЗАГРУЗКИ!</b>
 
-Функция загрузки будет доступна в следующей версии!
+Произошла ошибка при загрузке сохранения.`
 
-Покажите /play чтобы начать новую игру.`
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ParseMode = "HTML"
+		bot.Send(msg)
+		return
+	}
+
+	if player == nil {
+		text := `⚠️  <b>СОХРАНЕНИЕ НЕ НАЙДЕНО</b>
+
+У вас нет сохранённого прогресса.
+Начните новую игру командой /play`
+
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ParseMode = "HTML"
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🎮 Начать игру", "start_game"),
+			),
+		)
+		bot.Send(msg)
+		return
+	}
+
+	// Загружаем игрока в кэш
+	players[chatID] = player
+
+	text := `💾 <b>ИГРА ЗАГРУЖЕНА!</b>
+
+Ваш прогресс успешно загружён.
+
+` + player.DisplayStatus()
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = createGameKeyboard(player)
 	bot.Send(msg)
 }
 
@@ -627,6 +697,47 @@ func sendNoGameMessage(chatID int64) {
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🎮 Начать игру", "start_game"),
+		),
+	)
+
+	bot.Send(msg)
+}
+
+// sendLeaderboard отправляет таблицу лидеров
+func sendLeaderboard(chatID int64) {
+	leaderboard, err := GetLeaderboard(10)
+	if err != nil {
+		text := `❌ <b>ОШИБКА!</b>
+
+Не удалось загрузить таблицу лидеров.`
+
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ParseMode = "HTML"
+		bot.Send(msg)
+		return
+	}
+
+	text := `🏆 <b>ТАБЛИЦА ЛИДЕРОВ</b>
+━━━━━━━━━━━━━━━━━━━━
+
+Топ-10 игроков FocusGo:
+
+`
+
+	for i, entry := range leaderboard {
+		text += fmt.Sprintf("%d. <b>%s</b> — Ур.%d | Рейтинг: %d\n",
+			i+1, entry["name"], entry["level"], entry["rating"])
+	}
+
+	// Добавляем общую статистику
+	totalPlayers, _ := GetTotalPlayers()
+	text += fmt.Sprintf("\n📊 Всего игроков: %d", totalPlayers)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "main_menu"),
 		),
 	)
 
