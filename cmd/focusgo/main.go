@@ -19,6 +19,7 @@ var (
 	gameStates   = make(map[int64]*game.GameState)
 	questSystems = make(map[int64]*game.QuestSystem)
 	skillTrees   = make(map[int64]*game.SkillTree)
+	achievementSystems = make(map[int64]*game.AchievementSystem)
 )
 
 func main() {
@@ -142,6 +143,10 @@ func handleCommand(message *tgbotapi.Message) {
 		showQuests(chatID)
 	case "stats":
 		showStats(chatID)
+	case "leaderboard":
+		showLeaderboard(chatID)
+	case "achievements":
+		showAchievements(chatID)
 	case "backup":
 		handleBackup(chatID)
 	case "help":
@@ -375,11 +380,11 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 				{"👹 ДЕПРЕССИЯ МАКСИМА", 98},
 			}
 			boss := bosses[time.Now().Unix()%int64(len(bosses))]
-			
+
 			won, battleMsg := state.FinalBattle(boss.name, boss.power)
 			_ = won // используем переменную
 			state.SaveGameState()
-			
+
 			// Проверяем квесты
 			qs := questSystems[chatID]
 			if qs != nil {
@@ -389,8 +394,22 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 				if reward > 0 {
 					bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("💰 Получено %d очков навыков за квесты!", reward)))
 				}
+				
+				// Проверяем достижения
+				as, _ := game.LoadAchievementSystem(chatID)
+				if as != nil {
+					tree := skillTrees[chatID]
+					unlocked := as.CheckAchievements(state, tree, qs)
+					if len(unlocked) > 0 {
+						as.SaveAchievementSystem()
+						achievementSystems[chatID] = as
+						for _, achievement := range unlocked {
+							bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("🏆 <b>НОВОЕ ДОСТИЖЕНИЕ!</b>\n\n%s", achievement)))
+						}
+					}
+				}
 			}
-			
+
 			bot.Send(tgbotapi.NewMessage(chatID, battleMsg))
 		}
 		
@@ -538,6 +557,71 @@ func showQuests(chatID int64) {
 	bot.Send(msg)
 }
 
+// showLeaderboard показывает таблицу лидеров
+func showLeaderboard(chatID int64) {
+	leaderboard, err := database.GetLeaderboard(10)
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка загрузки таблицы лидеров"))
+		return
+	}
+
+	text := "🏆 <b>ТАБЛИЦА ЛИДЕРОВ</b>\n━━━━━━━━━━━━━━━━━━━━\n\nТоп-10 игроков:\n\n"
+
+	for i, entry := range leaderboard {
+		rank := ""
+		switch i {
+		case 0:
+			rank = "🥇"
+		case 1:
+			rank = "🥈"
+		case 2:
+			rank = "🥉"
+		default:
+			rank = fmt.Sprintf("%d.", i+1)
+		}
+
+		text += fmt.Sprintf("%s <b>%s</b> — Ур.%d | Рейтинг: %d\n",
+			rank, entry["name"], entry["level"], entry["rating"])
+	}
+
+	totalPlayers, _ := database.GetTotalPlayers()
+	text += fmt.Sprintf("\n📊 Всего игроков: %d", totalPlayers)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+		),
+	)
+
+	bot.Send(msg)
+}
+
+// showAchievements показывает достижения игрока
+func showAchievements(chatID int64) {
+	// Загружаем систему достижений
+	as, err := game.LoadAchievementSystem(chatID)
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка загрузки достижений"))
+		return
+	}
+
+	achievementSystems[chatID] = as
+
+	text := as.Display()
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+		),
+	)
+
+	bot.Send(msg)
+}
+
 func showStats(chatID int64) {
 	state, err := game.LoadGameState(chatID)
 	if err != nil || state == nil {
@@ -626,6 +710,8 @@ func sendHelp(chatID int64) {
 /skills — Дерево навыков
 /quests — Ежедневные квесты
 /stats — Статистика
+/leaderboard — Таблица лидеров
+/achievements — Достижения
 /backup — Бэкап БД
 /help — Справка
 
@@ -635,6 +721,9 @@ func sendHelp(chatID int64) {
 3. Выполняй ежедневные квесты
 4. Сопротивляйся искушениям
 5. Заверши день победой над боссом
+6. Улучшай навыки и получай бонусы
+7. Соревнуйся с другими в таблице лидеров
+8. Разблокируй достижения!
 
 <b>Уведомления:</b>
 • 9:00 — Напоминание о квестах

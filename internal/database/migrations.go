@@ -102,6 +102,25 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		Version: 6,
+		Name:    "add_achievements",
+		Up: func() error {
+			query := `
+				CREATE TABLE IF NOT EXISTS achievements (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					chat_id INTEGER NOT NULL,
+					achievement_id TEXT NOT NULL,
+					unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (chat_id) REFERENCES players(chat_id) ON DELETE CASCADE,
+					UNIQUE(chat_id, achievement_id)
+				);
+				CREATE INDEX IF NOT EXISTS idx_achievements_chat ON achievements(chat_id);
+			`
+			_, err := DB.Exec(query)
+			return err
+		},
+	},
 }
 
 // InitMigrations инициализирует таблицу миграций и применяет новые

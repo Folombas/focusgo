@@ -507,9 +507,10 @@ func saveGameSession(chatID int64, dayNumber, score, playTime int, bossDefeated 
 // GetLeaderboard возвращает таблицу лидеров
 func GetLeaderboard(limit int) ([]map[string]interface{}, error) {
 	query := `
-		SELECT name, level, experience, go_knowledge, 
-		       (go_knowledge * 10 + focus * 5 + willpower * 3) as rating
+		SELECT chat_id, name, level, experience, go_knowledge, focus, willpower,
+		       (go_knowledge * 10 + focus * 5 + willpower * 3 + level * 100) as rating
 		FROM players
+		WHERE game_active = 1
 		ORDER BY rating DESC
 		LIMIT ?
 	`
@@ -523,17 +524,19 @@ func GetLeaderboard(limit int) ([]map[string]interface{}, error) {
 	leaderboard := []map[string]interface{}{}
 
 	for rows.Next() {
+		var chatID int64
 		var name string
-		var level, experience, goKnowledge, rating int
+		var level, experience, goKnowledge, focus, willpower, rating int
 
-		if err := rows.Scan(&name, &level, &experience, &goKnowledge, &rating); err != nil {
+		if err := rows.Scan(&chatID, &name, &level, &experience, &goKnowledge, &focus, &willpower, &rating); err != nil {
 			return nil, err
 		}
 
 		leaderboard = append(leaderboard, map[string]interface{}{
-			"name":     name,
-			"level":    level,
-			"rating":   rating,
+			"chat_id":   chatID,
+			"name":      name,
+			"level":     level,
+			"rating":    rating,
 			"knowledge": goKnowledge,
 		})
 	}
