@@ -23,25 +23,38 @@ FocusGo — это Telegram-версия игры **Temptation Simulator**, ко
 
 ### 2. Настройте бота
 
+**Вариант 1: Через .env файл (рекомендуется)**
+
+Скопируйте `.env.example` в `.env`:
 ```bash
-# Экспортируйте токен
-export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
+cp .env.example .env
 ```
 
-Или создайте файл `.env`:
+Отредактируйте `.env` и вставьте ваш токен:
 ```bash
-TELEGRAM_BOT_TOKEN=your_token_here
+TELEGRAM_BOT_TOKEN=1234567890:AABBccDDeeFFggHHiiJJkkLLmmNNooP
+```
+
+**Вариант 2: Через переменную окружения**
+
+```bash
+export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN_HERE"
 ```
 
 ### 3. Запустите бота
 
+**Вариант 1: Запуск через go run**
 ```bash
 cd focusgo
-go run .
+go run ./cmd/focusgo
 ```
 
-Или используйте скомпилированный бинарник:
+**Вариант 2: Компиляция и запуск**
 ```bash
+# Компиляция
+go build -o focusgo ./cmd/focusgo
+
+# Запуск
 ./focusgo
 ```
 

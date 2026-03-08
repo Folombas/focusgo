@@ -9,10 +9,18 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/joho/godotenv"
 
 	"focusgo/internal/database"
 	"focusgo/internal/game"
 )
+
+func init() {
+	// Загружаем .env файл
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️  .env файл не найден, используем переменные окружения")
+	}
+}
 
 var (
 	bot          *tgbotapi.BotAPI
