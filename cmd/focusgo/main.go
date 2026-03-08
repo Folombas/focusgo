@@ -11,9 +11,14 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"focusgo/internal/database"
+	"focusgo/internal/game"
 )
 
-var bot *tgbotapi.BotAPI
+var (
+	bot          *tgbotapi.BotAPI
+	gameStates   = make(map[int64]*game.GameState)
+	questSystems = make(map[int64]*game.QuestSystem)
+)
 
 func main() {
 	// Инициализация БД
@@ -22,7 +27,7 @@ func main() {
 	}
 	defer database.CloseDB()
 
-	// Автоматические бэкапы каждые 24 часа
+	// Автоматические бэкапы
 	database.AutoBackup(24 * time.Hour)
 
 	// Обработка сигналов
@@ -51,7 +56,7 @@ func main() {
 	bot.Debug = true
 	log.Printf("✅ Бот авторизован: %s", bot.Self.UserName)
 
-	// Настраиваем Menu кнопку
+	// Настройка Menu кнопки
 	setupMenuButton()
 
 	u := tgbotapi.NewUpdate(0)
@@ -69,7 +74,6 @@ func main() {
 
 // setupMenuButton настраивает Menu кнопку
 func setupMenuButton() {
-	// Устанавливаем кнопку Menu с командами
 	cmd := tgbotapi.NewSetMyCommands(
 		tgbotapi.BotCommand{Command: "start", Description: "Начать игру"},
 		tgbotapi.BotCommand{Command: "menu", Description: "Главное меню"},
@@ -92,11 +96,27 @@ func setupMenuButton() {
 func handleMessage(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 
-	// Обработка текста (не команд)
 	if message.Text != "" && !message.IsCommand() {
-		// Показываем главное меню
-		showMainMenu(chatID)
-		return
+		if message.Text == "🎮 Меню" {
+			showMainMenu(chatID)
+			return
+		}
+		if message.Text == "👤 Профиль" {
+			showProfile(chatID)
+			return
+		}
+		if message.Text == "🌳 Навыки" {
+			showSkills(chatID)
+			return
+		}
+		if message.Text == "📋 Квесты" {
+			showQuests(chatID)
+			return
+		}
+		if message.Text == "📊 Статистика" {
+			showStats(chatID)
+			return
+		}
 	}
 
 	if message.IsCommand() {
@@ -110,15 +130,9 @@ func handleCommand(message *tgbotapi.Message) {
 
 	switch command {
 	case "start":
-		sendStart(chatID)
-	case "backup":
-		handleBackup(chatID)
-	case "help":
-		sendHelp(chatID)
+		sendStart(chatID, message.From.FirstName)
 	case "menu":
 		showMainMenu(chatID)
-	case "game":
-		showGameMenu(chatID)
 	case "profile":
 		showProfile(chatID)
 	case "skills":
@@ -127,41 +141,56 @@ func handleCommand(message *tgbotapi.Message) {
 		showQuests(chatID)
 	case "stats":
 		showStats(chatID)
+	case "backup":
+		handleBackup(chatID)
+	case "help":
+		sendHelp(chatID)
 	default:
 		sendUnknown(chatID)
 	}
 }
 
-func sendStart(chatID int64) {
-	text := `🎮 <b>FOCUSGO — Temptation Simulator</b>
+func sendStart(chatID int64, name string) {
+	// Загружаем или создаём игру
+	state, _ := game.LoadGameState(chatID)
+	if state == nil {
+		state = game.NewGameState(chatID, name)
+		state.SaveGameState()
+		
+		// Создаём квесты
+		qs := game.NewQuestSystem(chatID)
+		qs.GenerateDailyQuests()
+		questSystems[chatID] = qs
+	} else {
+		gameStates[chatID] = state
+		// Загружаем квесты
+		qs := game.NewQuestSystem(chatID)
+		qs.GenerateDailyQuests()
+		questSystems[chatID] = qs
+	}
 
-Добро пожаловать в симулятор борьбы с искушениями!
+	text := fmt.Sprintf(`🎮 <b>FOCUSGO — Temptation Simulator</b>
+
+👋 Привет, %s!
 
 🎯 <b>Твоя цель:</b>
 Сопротивляться искушениям, изучать Go и достичь уровня Go-Мастера!
 
-📋 <b>Команды:</b>
-/menu — Главное меню
-/profile — Твой профиль
-/skills — Дерево навыков
-/quests — Ежедневные квесты
-/stats — Статистика
-/backup — Бэкап БД
-/help — Справка
+%s
 
 💪 <b>Помни:</b>
-Каждая строка кода на Go — кирпичик в фундаменте твоей карьеры!`
+Каждая строка кода на Go — кирпичик в фундаменте твоей карьеры!
+
+Используй /menu или кнопку "🎮 Меню" для игры!`,
+		name, state.GetStatus())
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
 
-	// Добавляем клавиатуру с кнопками
 	keyboard := tgbotapi.ReplyKeyboardMarkup{
 		ResizeKeyboard: true,
 		Keyboard: [][]tgbotapi.KeyboardButton{
-			{
-				tgbotapi.NewKeyboardButton("🎮 Меню"),
-			},
+			{tgbotapi.NewKeyboardButton("🎮 Меню")},
 			{
 				tgbotapi.NewKeyboardButton("👤 Профиль"),
 				tgbotapi.NewKeyboardButton("🌳 Навыки"),
@@ -177,8 +206,17 @@ func sendStart(chatID int64) {
 	bot.Send(msg)
 }
 
-// showMainMenu показывает главное меню с inline-клавиатурой
 func showMainMenu(chatID int64) {
+	// Загружаем состояние
+	state, _ := game.LoadGameState(chatID)
+	if state == nil {
+		text := "⚠️  <b>ИГРА НЕ НАЧАТА</b>\n\nИспользуйте /start для начала игры!"
+		bot.Send(tgbotapi.NewMessage(chatID, text))
+		return
+	}
+
+	gameStates[chatID] = state
+
 	text := `🎮 <b>ГЛАВНОЕ МЕНЮ</b>
 
 Выберите действие:`
@@ -190,12 +228,8 @@ func showMainMenu(chatID int64) {
 	bot.Send(msg)
 }
 
-// createMainMenuKeyboard создаёт главную inline-клавиатуру
 func createMainMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎮 Начать игру", "cb_start_game"),
-		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📚 Учить Go (30 мин)", "cb_study_30"),
 			tgbotapi.NewInlineKeyboardButtonData("📚 Учить Go (60 мин)", "cb_study_60"),
@@ -216,48 +250,141 @@ func createMainMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("💾 Сохранить", "cb_save"),
 			tgbotapi.NewInlineKeyboardButtonData("🌙 Завершить день", "cb_end_day"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад к командам", "cb_back"),
-		),
 	)
 }
 
-// showGameMenu показывает игровое меню
-func showGameMenu(chatID int64) {
-	text := `🎮 <b>ИГРОВОЕ МЕНЮ</b>
+func handleCallback(callback *tgbotapi.CallbackQuery) {
+	chatID := callback.Message.Chat.ID
+	data := callback.Data
 
-Выберите действие:`
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "HTML"
-	msg.ReplyMarkup = createGameMenuKeyboard()
+	// Загружаем состояние
+	state, _ := game.LoadGameState(chatID)
+	if state == nil && data != "cb_start_game" {
+		text := "⚠️  <b>ИГРА НЕ НАЧАТА</b>\n\nИспользуйте /start!"
+		bot.Send(tgbotapi.NewMessage(chatID, text))
+		return
+	}
 
-	bot.Send(msg)
+	switch data {
+	case "cb_study_30":
+		msg, xp, knowledge := state.StudyGo(30)
+		state.SaveGameState()
+		
+		// Проверяем квесты
+		qs := questSystems[chatID]
+		if qs != nil {
+			completed, reward := qs.UpdateProgress("study_go_30min", 30)
+			if completed {
+				bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Квест выполнен! +%d очков навыков", reward)))
+			}
+		}
+		
+		// Проверяем искушение
+		if state.CheckTemptation() {
+			temptMsg, _ := state.ResistTemptation(70)
+			bot.Send(tgbotapi.NewMessage(chatID, temptMsg))
+		}
+		
+		response := fmt.Sprintf("%s\n\n✨ +%d опыта\n🧠 +%d знаний", msg, xp, knowledge)
+		bot.Send(tgbotapi.NewMessage(chatID, response))
+		
+	case "cb_study_60":
+		msg, xp, knowledge := state.StudyGo(60)
+		state.SaveGameState()
+		
+		qs := questSystems[chatID]
+		if qs != nil {
+			completed, reward := qs.UpdateProgress("study_go_30min", 60)
+			if completed {
+				bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Квест выполнен! +%d очков навыков", reward)))
+			}
+		}
+		
+		response := fmt.Sprintf("%s\n\n✨ +%d опыта\n🧠 +%d знаний", msg, xp, knowledge)
+		bot.Send(tgbotapi.NewMessage(chatID, response))
+		
+	case "cb_rest_15":
+		msg := state.Rest(15)
+		state.SaveGameState()
+		bot.Send(tgbotapi.NewMessage(chatID, msg))
+		
+	case "cb_rest_30":
+		msg := state.Rest(30)
+		state.SaveGameState()
+		bot.Send(tgbotapi.NewMessage(chatID, msg))
+		
+	case "cb_quests":
+		showQuests(chatID)
+		
+	case "cb_skills":
+		showSkills(chatID)
+		
+	case "cb_stats":
+		showStats(chatID)
+		
+	case "cb_profile":
+		showProfile(chatID)
+		
+	case "cb_save":
+		if state != nil {
+			state.SaveGameState()
+			bot.Send(tgbotapi.NewMessage(chatID, "💾 Прогресс сохранён!"))
+		}
+		
+	case "cb_end_day":
+		if state != nil {
+			// Финальная битва
+			bosses := []struct{ name string; power int }{
+				{"👹 CAPCUT МОНТЁР", 95},
+				{"👹 ИГРОВОЙ ЗАВИСИМОН", 92},
+				{"👹 СОЦСЕТЕЙ ДЕМОНИУС", 88},
+				{"👹 АЛКОГОЛЬНЫЙ ПРИЗРАК", 90},
+				{"👹 ДЕПРЕССИЯ МАКСИМА", 98},
+			}
+			boss := bosses[time.Now().Unix()%int64(len(bosses))]
+			
+			won, battleMsg := state.FinalBattle(boss.name, boss.power)
+			_ = won // используем переменную
+			state.SaveGameState()
+			
+			// Проверяем квесты
+			qs := questSystems[chatID]
+			if qs != nil {
+				completed := qs.GetCompletedCount() == 5
+				qs.CheckDayStreak(completed)
+				reward := qs.ClaimRewards()
+				if reward > 0 {
+					bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("💰 Получено %d очков навыков за квесты!", reward)))
+				}
+			}
+			
+			bot.Send(tgbotapi.NewMessage(chatID, battleMsg))
+		}
+		
+	case "cb_main_menu":
+		showMainMenu(chatID)
+		
+	case "cb_back":
+		bot.Send(tgbotapi.NewMessage(chatID, "🔙 Возврат к командам. Используйте /menu"))
+	}
 }
 
-// createGameMenuKeyboard создаёт игровую inline-клавиатуру
-func createGameMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⚔️  Финальная битва", "cb_battle"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📚 Учить Go", "cb_study_30"),
-			tgbotapi.NewInlineKeyboardButtonData("💤 Отдых", "cb_rest_15"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
-		),
-	)
-}
-
-// showProfile показывает профиль
 func showProfile(chatID int64) {
-	text := `👤 <b>ТВОЙ ПРОФИЛЬ</b>
+	state, err := game.LoadGameState(chatID)
+	if err != nil || state == nil {
+		text := "⚠️  <b>ИГРА НЕ НАЧАТА</b>\n\nИспользуйте /start!"
+		bot.Send(tgbotapi.NewMessage(chatID, text))
+		return
+	}
 
-Здесь будет твоя статистика...
+	text := fmt.Sprintf(`👤 <b>ПРОФИЛЬ ИГРОКА</b>
+━━━━━━━━━━━━━━━━━━━━
 
-⚠️  Функция в разработке!`
+%s
+
+🏅 Рейтинг: %s`, state.GetStatus(), state.GetRating())
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
@@ -270,13 +397,17 @@ func showProfile(chatID int64) {
 	bot.Send(msg)
 }
 
-// showSkills показывает навыки
 func showSkills(chatID int64) {
 	text := `🌳 <b>ДЕРЕВО НАВЫКОВ</b>
 
-Здесь будет дерево навыков...
+⚠️  Функция в разработке!
 
-⚠️  Функция в разработке!`
+Скоро вы сможете улучшать навыки:
+• Основы Go
+• Конкурентность
+• Интерфейсы
+• Web Фреймворки
+• И многие другие!`
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
@@ -289,13 +420,15 @@ func showSkills(chatID int64) {
 	bot.Send(msg)
 }
 
-// showQuests показывает квесты
 func showQuests(chatID int64) {
-	text := `📋 <b>ЕЖЕДНЕВНЫЕ КВЕСТЫ</b>
+	qs, exists := questSystems[chatID]
+	if !exists {
+		qs = game.NewQuestSystem(chatID)
+		qs.GenerateDailyQuests()
+		questSystems[chatID] = qs
+	}
 
-Здесь будут твои квесты...
-
-⚠️  Функция в разработке!`
+	text := qs.Display()
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
@@ -308,13 +441,26 @@ func showQuests(chatID int64) {
 	bot.Send(msg)
 }
 
-// showStats показывает статистику
 func showStats(chatID int64) {
-	text := `📊 <b>СТАТИСТИКА</b>
+	state, err := game.LoadGameState(chatID)
+	if err != nil || state == nil {
+		text := "⚠️  <b>ИГРА НЕ НАЧАТА</b>\n\nИспользуйте /start!"
+		bot.Send(tgbotapi.NewMessage(chatID, text))
+		return
+	}
 
-Здесь будет твоя статистика...
+	text := fmt.Sprintf(`📊 <b>СТАТИСТИКА</b>
+━━━━━━━━━━━━━━━━━━━━
 
-⚠️  Функция в разработке!`
+🏆 Уровень: %d
+⭐ Опыт: %d/%d
+🕐 Время в игре: %d минут
+📅 Дней сыграно: %d
+🏅 Рейтинг: %s
+
+🚀 Продолжай учиться и достигнешь цели!`,
+		state.Level, state.Experience, state.NextLevelXP,
+		state.PlayTime, state.DaysPlayed, state.GetRating())
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
@@ -343,9 +489,8 @@ func sendHelp(chatID int64) {
 	text := `📖 <b>СПРАВКА</b>
 
 <b>Команды:</b>
-/start — Старт
+/start — Начать игру
 /menu — Главное меню
-/game — Игровое меню
 /profile — Твой профиль
 /skills — Дерево навыков
 /quests — Ежедневные квесты
@@ -353,13 +498,17 @@ func sendHelp(chatID int64) {
 /backup — Бэкап БД
 /help — Справка
 
+<b>Как играть:</b>
+1. Начни игру командой /start
+2. Изучай Go и получай опыт
+3. Выполняй ежедневные квесты
+4. Сопротивляйся искушениям
+5. Заверши день победой над боссом
+
 <b>Уведомления:</b>
 • 9:00 — Напоминание о квестах
 • 20:00 — Напоминание о финальной битве
 • 22:00 — Напоминание о незавершённых квестах
-
-<b>Menu кнопка:</b>
-Нажми на кнопку "Menu" слева от поля ввода, чтобы выбрать команду!
 
 Автосохранение: каждые 24 часа`
 
@@ -371,51 +520,4 @@ func sendHelp(chatID int64) {
 func sendUnknown(chatID int64) {
 	text := "❌ Неизвестная команда. Используйте /help"
 	bot.Send(tgbotapi.NewMessage(chatID, text))
-}
-
-func handleCallback(callback *tgbotapi.CallbackQuery) {
-	chatID := callback.Message.Chat.ID
-	data := callback.Data
-
-	// Отправляем подтверждение
-	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
-
-	// Обработчики inline-кнопок
-	switch data {
-	case "cb_start_game":
-		sendCallbackMessage(chatID, "🎮 Игра начинается! (в разработке)")
-	case "cb_study_30":
-		sendCallbackMessage(chatID, "📚 Изучение Go: 30 минут (в разработке)")
-	case "cb_study_60":
-		sendCallbackMessage(chatID, "📚 Изучение Go: 60 минут (в разработке)")
-	case "cb_rest_15":
-		sendCallbackMessage(chatID, "💤 Отдых: 15 минут (в разработке)")
-	case "cb_rest_30":
-		sendCallbackMessage(chatID, "💤 Отдых: 30 минут (в разработке)")
-	case "cb_quests":
-		showQuests(chatID)
-	case "cb_skills":
-		showSkills(chatID)
-	case "cb_stats":
-		showStats(chatID)
-	case "cb_profile":
-		showProfile(chatID)
-	case "cb_save":
-		handleBackup(chatID)
-	case "cb_end_day":
-		sendCallbackMessage(chatID, "🌙 День завершён! (в разработке)")
-	case "cb_battle":
-		sendCallbackMessage(chatID, "⚔️  Финальная битва! (в разработке)")
-	case "cb_main_menu":
-		showMainMenu(chatID)
-	case "cb_back":
-		sendCallbackMessage(chatID, "🔙 Возврат к командам")
-	}
-}
-
-// sendCallbackMessage отправляет сообщение в ответ на callback
-func sendCallbackMessage(chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "HTML"
-	bot.Send(msg)
 }
