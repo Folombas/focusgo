@@ -71,6 +71,37 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version: 5,
+		Name:    "add_skill_trees",
+		Up: func() error {
+			queries := []string{
+				`CREATE TABLE IF NOT EXISTS skill_trees (
+					chat_id INTEGER PRIMARY KEY,
+					skill_points INTEGER DEFAULT 0,
+					total_points INTEGER DEFAULT 0,
+					FOREIGN KEY (chat_id) REFERENCES players(chat_id) ON DELETE CASCADE
+				)`,
+				`CREATE TABLE IF NOT EXISTS skills (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					chat_id INTEGER NOT NULL,
+					skill_id TEXT NOT NULL,
+					level INTEGER DEFAULT 0,
+					unlocked INTEGER DEFAULT 0,
+					FOREIGN KEY (chat_id) REFERENCES players(chat_id) ON DELETE CASCADE,
+					UNIQUE(chat_id, skill_id)
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_skills_chat ON skills(chat_id)`,
+			}
+			for _, query := range queries {
+				_, err := DB.Exec(query)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // InitMigrations инициализирует таблицу миграций и применяет новые

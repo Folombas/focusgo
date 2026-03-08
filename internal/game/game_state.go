@@ -114,13 +114,15 @@ func (s *GameState) SaveGameState() error {
 }
 
 // AddExperience добавляет опыт и проверяет повышение уровня
-func (s *GameState) AddExperience(xp int) int {
+// Возвращает количество повышенных уровней и заработанные очки навыков
+func (s *GameState) AddExperience(xp int) (int, int) {
 	if xp < 0 {
 		xp = 0
 	}
 
 	s.Experience += xp
 	levelsGained := 0
+	skillPointsEarned := 0
 
 	for s.Experience >= s.NextLevelXP {
 		s.Experience -= s.NextLevelXP
@@ -131,9 +133,13 @@ func (s *GameState) AddExperience(xp int) int {
 		// Бонус за уровень
 		s.Focus = 100
 		s.Willpower = 100
+		
+		// Очки навыков: 2 + 1 за каждые 5 уровней
+		points := 2 + (s.Level / 5)
+		skillPointsEarned += points
 	}
 
-	return levelsGained
+	return levelsGained, skillPointsEarned
 }
 
 // StudyGo изучает Go

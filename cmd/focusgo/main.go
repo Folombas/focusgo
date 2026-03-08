@@ -18,6 +18,7 @@ var (
 	bot          *tgbotapi.BotAPI
 	gameStates   = make(map[int64]*game.GameState)
 	questSystems = make(map[int64]*game.QuestSystem)
+	skillTrees   = make(map[int64]*game.SkillTree)
 )
 
 func main() {
@@ -271,16 +272,23 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 	case "cb_study_30":
 		msg, xp, knowledge := state.StudyGo(30)
 		state.SaveGameState()
-		
+
 		// Проверяем квесты
 		qs := questSystems[chatID]
 		if qs != nil {
 			completed, reward := qs.UpdateProgress("study_go_30min", 30)
 			if completed {
 				bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Квест выполнен! +%d очков навыков", reward)))
+				// Добавляем очки навыков в дерево
+				tree, _ := game.LoadSkillTree(chatID)
+				if tree != nil {
+					tree.EarnSkillPoints(reward)
+					tree.SaveSkillTree()
+					skillTrees[chatID] = tree
+				}
 			}
 		}
-		
+
 		// Проверяем искушение
 		if state.CheckTemptation() {
 			temptMsg, _ := state.ResistTemptation(70)
@@ -320,12 +328,20 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 		
 	case "cb_skills":
 		showSkills(chatID)
-		
+
 	case "cb_stats":
 		showStats(chatID)
-		
+
 	case "cb_profile":
 		showProfile(chatID)
+
+	case "cb_upgrade_go_basics", "cb_upgrade_concurrency", "cb_upgrade_interfaces",
+	     "cb_upgrade_web_frameworks", "cb_upgrade_database", "cb_upgrade_microservices",
+	     "cb_upgrade_focus_master", "cb_upgrade_meditation", "cb_upgrade_anti_procrastination",
+	     "cb_upgrade_willpower", "cb_upgrade_discipline", "cb_upgrade_money_management":
+		// Извлекаем ID навыка из callback_data
+		skillID := data[11:] // убираем "cb_upgrade_"
+		handleUpgradeSkill(chatID, skillID)
 		
 	case "cb_save":
 		if state != nil {
@@ -398,26 +414,63 @@ func showProfile(chatID int64) {
 }
 
 func showSkills(chatID int64) {
-	text := `🌳 <b>ДЕРЕВО НАВЫКОВ</b>
+	// Загружаем дерево навыков
+	tree, err := game.LoadSkillTree(chatID)
+	if err != nil {
+		log.Printf("Ошибка загрузки дерева навыков: %v", err)
+	}
+	
+	if tree == nil {
+		tree = game.NewSkillTree(chatID)
+	}
+	
+	skillTrees[chatID] = tree
 
-⚠️  Функция в разработке!
-
-Скоро вы сможете улучшать навыки:
-• Основы Go
-• Конкурентность
-• Интерфейсы
-• Web Фреймворки
-• И многие другие!`
+	text := tree.Display()
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "HTML"
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
-		),
-	)
+	
+	// Создаём клавиатуру с доступными улучшениями
+	keyboard := createSkillsKeyboard(tree)
+	if len(keyboard) > 0 {
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+	} else {
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+			),
+		)
+	}
 
 	bot.Send(msg)
+}
+
+// createSkillsKeyboard создаёт клавиатуру для улучшения навыков
+func createSkillsKeyboard(tree *game.SkillTree) [][]tgbotapi.InlineKeyboardButton {
+	var keyboard [][]tgbotapi.InlineKeyboardButton
+
+	if tree.SkillPoints > 0 {
+		for id, skill := range tree.Skills {
+			if skill.Unlocked && skill.Level < skill.MaxLevel {
+				cost := skill.CostPerLevel
+				if tree.SkillPoints >= cost {
+					keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(
+						tgbotapi.NewInlineKeyboardButtonData(
+							fmt.Sprintf("⬆️ %s (%d очк.)", skill.Name, cost),
+							fmt.Sprintf("cb_upgrade_%s", id),
+						),
+					))
+				}
+			}
+		}
+	}
+
+	keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+	))
+
+	return keyboard
 }
 
 func showQuests(chatID int64) {
@@ -471,6 +524,31 @@ func showStats(chatID int64) {
 	)
 
 	bot.Send(msg)
+}
+
+// handleUpgradeSkill обрабатывает улучшение навыка
+func handleUpgradeSkill(chatID int64, skillID string) {
+	tree, exists := skillTrees[chatID]
+	if !exists {
+		var err error
+		tree, err = game.LoadSkillTree(chatID)
+		if err != nil {
+			bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка загрузки дерева навыков"))
+			return
+		}
+		skillTrees[chatID] = tree
+	}
+
+	success, msg := tree.UpgradeSkill(skillID)
+	
+	if success {
+		tree.SaveSkillTree()
+		bot.Send(tgbotapi.NewMessage(chatID, msg))
+		// Показываем обновлённое дерево
+		showSkills(chatID)
+	} else {
+		bot.Send(tgbotapi.NewMessage(chatID, msg))
+	}
 }
 
 func handleBackup(chatID int64) {
