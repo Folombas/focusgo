@@ -151,6 +151,11 @@ func createTables() error {
 
 // SavePlayer сохраняет игрока в базу данных
 func SavePlayer(player *Player) error {
+	// Валидация перед сохранением
+	if err := ValidateBeforeSave(player); err != nil {
+		log.Printf("⚠️  WARNING: Ошибки валидации перед сохранением: %v", err)
+	}
+
 	query := `
 		INSERT OR REPLACE INTO players 
 		(chat_id, name, level, experience, go_knowledge, focus, willpower, 
@@ -261,6 +266,11 @@ func LoadPlayer(chatID int64) (*Player, error) {
 	// Загружаем серию дней
 	if err = loadDayStreak(player); err != nil {
 		return nil, err
+	}
+
+	// Валидация после загрузки
+	if err = ValidateAfterLoad(player); err != nil {
+		log.Printf("⚠️  WARNING: Ошибки валидации после загрузки: %v", err)
 	}
 
 	// Применяем бонусы от навыков

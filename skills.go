@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -279,8 +280,14 @@ func (st *SkillTree) checkUnlocks(skillID string) {
 
 // EarnSkillPoints начисляет очки навыков
 func (st *SkillTree) EarnSkillPoints(points int) {
-	st.SkillPoints += points
-	st.TotalPoints += points
+	// Валидация
+	if points < 0 {
+		log.Printf("⚠️  WARNING: Отрицательные очки навыков: %d, установлено 0", points)
+		points = 0
+	}
+
+	st.SkillPoints = ClampInt(st.SkillPoints + points, 0, 10000)
+	st.TotalPoints = ClampInt(st.TotalPoints + points, 0, 100000)
 }
 
 // GetTotalBonus возвращает суммарный бонус по типу
@@ -350,9 +357,15 @@ func (qs *QuestSystem) GenerateDailyQuests() {
 
 // UpdateQuestProgress обновляет прогресс квеста
 func (qs *QuestSystem) UpdateQuestProgress(questID string, progress int) {
+	// Валидация прогресса
+	if progress < 0 {
+		log.Printf("⚠️  WARNING: Отрицательный прогресс квеста %s: %d, установлено 0", questID, progress)
+		progress = 0
+	}
+
 	for _, quest := range qs.Quests {
 		if quest.ID == questID && !quest.Completed {
-			quest.Progress += progress
+			quest.Progress = ClampInt(quest.Progress + progress, 0, quest.Goal*10)
 			if quest.Progress >= quest.Goal {
 				quest.Completed = true
 				qs.TotalCompleted++
