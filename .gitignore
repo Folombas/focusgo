@@ -1,0 +1,37 @@
+# Бинарные файлы
+focusgo
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Тестовые файлы
+*.test
+*.out
+
+# Переменные окружения
+.env
+.env.local
+
+# Токены и секреты
+token.txt
+secret.txt
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
