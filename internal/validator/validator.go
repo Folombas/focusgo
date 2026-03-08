@@ -1,8 +1,10 @@
-package main
+package validator
 
 import (
 	"fmt"
 	"log"
+
+	"focusgo/internal/models"
 )
 
 // ============================================================================
@@ -98,7 +100,7 @@ func ClampStringLength(s string, maxLen int) string {
 // ============================================================================
 
 // ValidatePlayer проверяет валидность всех характеристик игрока
-func ValidatePlayer(player *Player) []string {
+func ValidatePlayer(player *models.Player) []string {
 	var errors []string
 
 	// Проверка имени
@@ -170,7 +172,7 @@ func ValidatePlayer(player *Player) []string {
 }
 
 // SanitizePlayer исправляет некорректные значения характеристик игрока
-func SanitizePlayer(player *Player) {
+func SanitizePlayer(player *models.Player) {
 	// Ограничиваем характеристики диапазоном [0, 100]
 	player.Focus = ClampStat(player.Focus)
 	player.Willpower = ClampStat(player.Willpower)
@@ -204,7 +206,7 @@ func SanitizePlayer(player *Player) {
 }
 
 // ValidateAndSanitize проверяет и исправляет игрока, возвращает ошибки
-func ValidateAndSanitize(player *Player) []string {
+func ValidateAndSanitize(player *models.Player) []string {
 	// Сначала sanitaze, потом validate
 	SanitizePlayer(player)
 	return ValidatePlayer(player)
@@ -215,7 +217,7 @@ func ValidateAndSanitize(player *Player) []string {
 // ============================================================================
 
 // ValidateSkill проверяет валидность навыка
-func ValidateSkill(skill *Skill) []string {
+func ValidateSkill(skill *models.Skill) []string {
 	var errors []string
 
 	if skill.ID == "" {
@@ -250,7 +252,7 @@ func ValidateSkill(skill *Skill) []string {
 }
 
 // SanitizeSkill исправляет некорректные значения навыка
-func SanitizeSkill(skill *Skill) {
+func SanitizeSkill(skill *models.Skill) {
 	if skill.Level < 0 {
 		skill.Level = 0
 	}
@@ -281,7 +283,7 @@ func SanitizeSkill(skill *Skill) {
 }
 
 // ValidateSkillTree проверяет всё дерево навыков
-func ValidateSkillTree(tree *SkillTree) []string {
+func ValidateSkillTree(tree *models.SkillTree) []string {
 	var errors []string
 
 	if tree.SkillPoints < 0 {
@@ -310,7 +312,7 @@ func ValidateSkillTree(tree *SkillTree) []string {
 // ============================================================================
 
 // ValidateQuest проверяет валидность квеста
-func ValidateQuest(quest *DailyQuest) []string {
+func ValidateQuest(quest *models.DailyQuest) []string {
 	var errors []string
 
 	if quest.ID == "" {
@@ -339,7 +341,7 @@ func ValidateQuest(quest *DailyQuest) []string {
 }
 
 // SanitizeQuest исправляет некорректные значения квеста
-func SanitizeQuest(quest *DailyQuest) {
+func SanitizeQuest(quest *models.DailyQuest) {
 	if quest.Progress < 0 {
 		quest.Progress = 0
 	}
@@ -362,7 +364,7 @@ func SanitizeQuest(quest *DailyQuest) {
 }
 
 // ValidateQuestSystem проверяет систему квестов
-func ValidateQuestSystem(qs *QuestSystem) []string {
+func ValidateQuestSystem(qs *models.QuestSystem) []string {
 	var errors []string
 
 	if qs.DayStreak < 0 {
@@ -391,7 +393,7 @@ func ValidateQuestSystem(qs *QuestSystem) []string {
 // ============================================================================
 
 // ValidateTemptation проверяет валидность искушения
-func ValidateTemptation(t *Temptation) []string {
+func ValidateTemptation(t *models.Temptation) []string {
 	var errors []string
 
 	if t.Name == "" {
@@ -416,7 +418,7 @@ func ValidateTemptation(t *Temptation) []string {
 // ============================================================================
 
 // ValidateMotivation проверяет валидность мотивации
-func ValidateMotivation(m *Motivation) []string {
+func ValidateMotivation(m *models.Motivation) []string {
 	var errors []string
 
 	if m.Text == "" {
@@ -437,7 +439,7 @@ func ValidateMotivation(m *Motivation) []string {
 // ============================================================================
 
 // ValidateBeforeSave проверяет игрока перед сохранением в БД
-func ValidateBeforeSave(player *Player) error {
+func ValidateBeforeSave(player *models.Player) error {
 	errors := ValidateAndSanitize(player)
 
 	if len(errors) > 0 {
@@ -458,7 +460,7 @@ func ValidateBeforeSave(player *Player) error {
 // ============================================================================
 
 // ValidateAfterLoad проверяет игрока после загрузки из БД
-func ValidateAfterLoad(player *Player) error {
+func ValidateAfterLoad(player *models.Player) error {
 	errors := ValidateAndSanitize(player)
 
 	if len(errors) > 0 {

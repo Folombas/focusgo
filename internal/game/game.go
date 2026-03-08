@@ -1,4 +1,9 @@
-package main
+package game
+
+import (
+	"focusgo/internal/models"
+	"focusgo/internal/notifications"
+)
 
 import (
 	"fmt"
@@ -6,12 +11,17 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"focusgo/internal/database"
+	"focusgo/internal/models"
+	"focusgo/internal/notifications"
+	"focusgo/internal/validator"
 )
 
 // startGame начинает новую игру
-func startGame(chatID int64, name string) {
+func StartGame(chatID int64, name string) {
 	// Сначала пробуем загрузить из БД
-	existingPlayer, err := LoadPlayer(chatID)
+	existingPlayer, err := database.LoadPlayer(chatID)
 	if err != nil {
 		log.Printf("Ошибка загрузки игрока: %v", err)
 	}
@@ -44,7 +54,7 @@ func startGame(chatID int64, name string) {
 	players[chatID] = player
 
 	// Сохраняем в БД
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения игрока: %v", err)
 	}
 
@@ -102,7 +112,7 @@ func createGameKeyboard(player *Player) tgbotapi.InlineKeyboardMarkup {
 }
 
 // handleStudyGo30 обрабатывает изучение Go 30 минут
-func handleStudyGo30(chatID int64) {
+func HandleStudyGo30(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -119,7 +129,7 @@ func handleStudyGo30(chatID int64) {
 	}
 
 	// Сохраняем в БД после каждого действия
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 	}
 
@@ -133,7 +143,7 @@ func handleStudyGo30(chatID int64) {
 }
 
 // handleStudyGo60 обрабатывает изучение Go 60 минут
-func handleStudyGo60(chatID int64) {
+func HandleStudyGo60(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -150,7 +160,7 @@ func handleStudyGo60(chatID int64) {
 	}
 
 	// Сохраняем в БД
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 	}
 
@@ -165,7 +175,7 @@ func handleStudyGo60(chatID int64) {
 }
 
 // handleRest15 обрабатывает отдых 15 минут
-func handleRest15(chatID int64) {
+func HandleRest15(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -182,7 +192,7 @@ func handleRest15(chatID int64) {
 	}
 
 	// Сохраняем в БД
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 	}
 
@@ -194,7 +204,7 @@ func handleRest15(chatID int64) {
 }
 
 // handleRest30 обрабатывает отдых 30 минут
-func handleRest30(chatID int64) {
+func HandleRest30(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -211,7 +221,7 @@ func handleRest30(chatID int64) {
 	}
 
 	// Сохраняем в БД
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 	}
 
@@ -223,7 +233,7 @@ func handleRest30(chatID int64) {
 }
 
 // handleSkillUpgrade обрабатывает улучшение навыка
-func handleSkillUpgrade(chatID int64, skillID string) {
+func HandleSkillUpgrade(chatID int64, skillID string) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -249,7 +259,7 @@ func handleSkillUpgrade(chatID int64, skillID string) {
 			translateBonusType(skill.BonusType))
 
 		// Сохраняем в БД
-		if err := SavePlayer(player); err != nil {
+		if err := database.SavePlayer(player); err != nil {
 			log.Printf("Ошибка сохранения: %v", err)
 		}
 
@@ -289,7 +299,7 @@ func translateBonusType(bonusType string) string {
 }
 
 // handleUpgradeSkill обрабатывает улучшение навыков
-func handleUpgradeSkill(chatID int64) {
+func HandleUpgradeSkill(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -300,7 +310,7 @@ func handleUpgradeSkill(chatID int64) {
 }
 
 // handleEndDay обрабатывает завершение дня
-func handleEndDay(chatID int64) {
+func HandleEndDay(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -341,7 +351,7 @@ func handleEndDay(chatID int64) {
 }
 
 // handleFinalBattle обрабатывает финальную битву
-func handleFinalBattle(chatID int64) {
+func HandleFinalBattle(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -389,17 +399,17 @@ func handleFinalBattle(chatID int64) {
 
 	// Сохраняем сессию
 	score := player.CalculateScore()
-	saveGameSession(chatID, player.CurrentDay-1, score, player.PlayTime, won, questsCompleted)
+	database.SaveGameSession(chatID, player.CurrentDay-1, score, player.PlayTime, won, questsCompleted)
 
 	// Сохраняем серию дней
 	player.Quests.CheckDayStreak(true)
-	saveDayStreak(player)
+	database.SaveDayStreak(player)
 
 	// Генерируем новые квесты
 	player.Quests.GenerateDailyQuests()
 
 	// Сохраняем игрока
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 	}
 
@@ -422,7 +432,7 @@ func checkRandomEvents(chatID int64, player *Player) {
 		bot.Send(msg)
 
 		// Сохраняем после искушения
-		if err := SavePlayer(player); err != nil {
+		if err := database.SavePlayer(player); err != nil {
 			log.Printf("Ошибка сохранения: %v", err)
 		}
 	}
@@ -447,7 +457,7 @@ func checkRandomEvents(chatID int64, player *Player) {
 		bot.Send(msg)
 
 		// Сохраняем после мотивации
-		if err := SavePlayer(player); err != nil {
+		if err := database.SavePlayer(player); err != nil {
 			log.Printf("Ошибка сохранения: %v", err)
 		}
 	}
@@ -463,7 +473,7 @@ func updatePlayerStatus(chatID int64, player *Player) {
 }
 
 // sendProfile отправляет профиль игрока
-func sendProfile(chatID int64) {
+func SendProfile(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -484,7 +494,7 @@ func sendProfile(chatID int64) {
 }
 
 // sendSkills отправляет дерево навыков
-func sendSkills(chatID int64) {
+func SendSkills(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -535,7 +545,7 @@ func createSkillsKeyboard(player *Player) [][]tgbotapi.InlineKeyboardButton {
 }
 
 // sendQuests отправляет квесты
-func sendQuests(chatID int64) {
+func SendQuests(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -556,7 +566,7 @@ func sendQuests(chatID int64) {
 }
 
 // sendStats отправляет статистику
-func sendStats(chatID int64) {
+func SendStats(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -577,7 +587,7 @@ func sendStats(chatID int64) {
 }
 
 // showMainMenu показывает главное меню
-func showMainMenu(chatID int64) {
+func ShowMainMenu(chatID int64) {
 	text := `🎮 <b>ГЛАВНОЕ МЕНЮ</b>
 
 Выберите действие:`
@@ -605,7 +615,7 @@ func showMainMenu(chatID int64) {
 }
 
 // saveGame сохраняет игру
-func saveGame(chatID int64) {
+func SaveGame(chatID int64) {
 	player := players[chatID]
 	if player == nil {
 		sendNoGameMessage(chatID)
@@ -613,7 +623,7 @@ func saveGame(chatID int64) {
 	}
 
 	// Сохраняем в БД
-	if err := SavePlayer(player); err != nil {
+	if err := database.SavePlayer(player); err != nil {
 		log.Printf("Ошибка сохранения: %v", err)
 		text := `❌ <b>ОШИБКА СОХРАНЕНИЯ!</b>
 
@@ -639,8 +649,8 @@ func saveGame(chatID int64) {
 }
 
 // loadGame загружает игру
-func loadGame(chatID int64) {
-	player, err := LoadPlayer(chatID)
+func LoadGame(chatID int64) {
+	player, err := database.LoadPlayer(chatID)
 	if err != nil {
 		text := `❌ <b>ОШИБКА ЗАГРУЗКИ!</b>
 
@@ -704,7 +714,7 @@ func sendNoGameMessage(chatID int64) {
 }
 
 // sendRemindSettings отправляет настройки уведомлений
-func sendRemindSettings(chatID int64) {
+func SendRemindSettings(chatID int64) {
 	settings := NotificationScheduler.getSettings(chatID)
 
 	enabledStatus := "✅"
@@ -826,8 +836,8 @@ func createRemindKeyboard(settings *NotificationSettings) tgbotapi.InlineKeyboar
 }
 
 // sendLeaderboard отправляет таблицу лидеров
-func sendLeaderboard(chatID int64) {
-	leaderboard, err := GetLeaderboard(10)
+func SendLeaderboard(chatID int64) {
+	leaderboard, err := database.GetLeaderboard(10)
 	if err != nil {
 		text := `❌ <b>ОШИБКА!</b>
 
@@ -852,7 +862,7 @@ func sendLeaderboard(chatID int64) {
 	}
 
 	// Добавляем общую статистику
-	totalPlayers, _ := GetTotalPlayers()
+	totalPlayers, _ := database.GetTotalPlayers()
 	text += fmt.Sprintf("\n📊 Всего игроков: %d", totalPlayers)
 
 	msg := tgbotapi.NewMessage(chatID, text)

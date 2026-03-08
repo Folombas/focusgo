@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"fmt"
@@ -286,8 +286,8 @@ func (st *SkillTree) EarnSkillPoints(points int) {
 		points = 0
 	}
 
-	st.SkillPoints = ClampInt(st.SkillPoints + points, 0, 10000)
-	st.TotalPoints = ClampInt(st.TotalPoints + points, 0, 100000)
+	st.SkillPoints = clampInt(st.SkillPoints + points, 0, 10000)
+	st.TotalPoints = clampInt(st.TotalPoints + points, 0, 100000)
 }
 
 // GetTotalBonus возвращает суммарный бонус по типу
@@ -365,7 +365,7 @@ func (qs *QuestSystem) UpdateQuestProgress(questID string, progress int) {
 
 	for _, quest := range qs.Quests {
 		if quest.ID == questID && !quest.Completed {
-			quest.Progress = ClampInt(quest.Progress + progress, 0, quest.Goal*10)
+			quest.Progress = clampInt(quest.Progress + progress, 0, quest.Goal*10)
 			if quest.Progress >= quest.Goal {
 				quest.Completed = true
 				qs.TotalCompleted++

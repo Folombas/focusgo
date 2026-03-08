@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"fmt"
@@ -66,7 +66,7 @@ func NewPlayer(chatID int64, name string) *Player {
 	player.Quests = NewQuestSystem()
 
 	// Валидация после создания
-	if err := ValidateAfterLoad(player); err != nil {
+	if err := validatePlayer(player); err != nil {
 		log.Printf("⚠️  WARNING: Ошибки валидации нового игрока: %v", err)
 	}
 
@@ -156,7 +156,7 @@ func (p *Player) AddExperience(xp int) int {
 		xp = 0
 	}
 
-	p.Experience = ClampExperience(p.Experience + xp)
+	p.Experience = clampExperience(p.Experience + xp)
 
 	// Проверяем повышение уровня
 	xpNeeded := p.Level * 100
@@ -164,12 +164,12 @@ func (p *Player) AddExperience(xp int) int {
 
 	for p.Experience >= xpNeeded {
 		p.Experience -= xpNeeded
-		p.Level = ClampLevel(p.Level + 1)
+		p.Level = clampLevel(p.Level + 1)
 		levelsGained++
 
 		// Восстанавливаем характеристики
-		p.Focus = ClampStat(100)
-		p.Willpower = ClampStat(100)
+		p.Focus = clampStat(100)
+		p.Willpower = clampStat(100)
 
 		// Начисляем очки навыков
 		skillPoints := 2 + (p.Level / 5)
@@ -209,14 +209,14 @@ func (p *Player) StudyGo(minutes int) string {
 	totalXP := baseXP + (knowledgeBonus / 5)
 
 	p.AddExperience(totalXP)
-	p.GoKnowledge = ClampStat(p.GoKnowledge + minutes/5)
+	p.GoKnowledge = clampStat(p.GoKnowledge + minutes/5)
 
 	// Обновляем квесты
 	p.Quests.UpdateQuestProgress("study_go_30min", minutes)
 	p.Quests.UpdateQuestProgress("code_practice", minutes/2)
 
 	// Восстанавливаем дофамин
-	p.Dopamine = ClampDopamine(p.Dopamine + minutes/3)
+	p.Dopamine = clampDopamine(p.Dopamine + minutes/3)
 
 	return fmt.Sprintf(`📚 <b>ИЗУЧЕНИЕ GO: %d минут</b>
 
@@ -234,8 +234,8 @@ func (p *Player) Rest(minutes int) string {
 		minutes = 0
 	}
 
-	p.Focus = ClampStat(p.Focus + minutes/2)
-	p.Dopamine = ClampDopamine(p.Dopamine + minutes/3)
+	p.Focus = clampStat(p.Focus + minutes/2)
+	p.Dopamine = clampDopamine(p.Dopamine + minutes/3)
 
 	return fmt.Sprintf(`💤 <b>ОТДЫХ: %d минут</b>
 
@@ -247,7 +247,7 @@ func (p *Player) Rest(minutes int) string {
 // HandleTemptation обрабатывает искушение
 func (p *Player) HandleTemptation(t Temptation) string {
 	resistChance := p.Willpower - t.Power + 50
-	resistChance = ClampInt(resistChance, 10, 100)
+	resistChance = clampInt(resistChance, 10, 100)
 
 	roll := rand.Intn(100)
 
@@ -255,9 +255,9 @@ func (p *Player) HandleTemptation(t Temptation) string {
 		// Успешное сопротивление
 		xpReward := t.Power / 2
 		p.AddExperience(xpReward)
-		p.Focus = ClampStat(p.Focus + 10)
-		p.Willpower = ClampStat(p.Willpower + 5)
-		p.Dopamine = ClampDopamine(p.Dopamine + 50)
+		p.Focus = clampStat(p.Focus + 10)
+		p.Willpower = clampStat(p.Willpower + 5)
+		p.Dopamine = clampDopamine(p.Dopamine + 50)
 		p.Temptations = append(p.Temptations, t.Name)
 
 		// Обновляем квест
@@ -276,12 +276,12 @@ func (p *Player) HandleTemptation(t Temptation) string {
 		// Поражение
 		xpLoss := t.XPLoss
 		if p.Experience >= xpLoss {
-			p.Experience = ClampExperience(p.Experience - xpLoss)
+			p.Experience = clampExperience(p.Experience - xpLoss)
 		}
 
-		p.Focus = ClampStat(p.Focus - 20)
-		p.Willpower = ClampStat(p.Willpower - 10)
-		p.Dopamine = ClampDopamine(p.Dopamine - 100)
+		p.Focus = clampStat(p.Focus - 20)
+		p.Willpower = clampStat(p.Willpower - 10)
+		p.Dopamine = clampDopamine(p.Dopamine - 100)
 
 		return fmt.Sprintf(`❌ <b>ПОРАЖЕНИЕ...</b>
 
@@ -298,23 +298,23 @@ func (p *Player) HandleTemptation(t Temptation) string {
 // FinalBattle финальная битва с боссом
 func (p *Player) FinalBattle(boss Temptation) bool {
 	successChance := (p.Willpower*2 + p.Focus) / 3
-	successChance = ClampInt(successChance, 10, 95)
+	successChance = clampInt(successChance, 10, 95)
 
 	roll := rand.Intn(100)
 
 	if roll < successChance {
 		// Победа
-		p.Focus = ClampStat(100)
-		p.Willpower = ClampStat(100)
-		p.Dopamine = ClampDopamine(p.Dopamine + 500)
+		p.Focus = clampStat(100)
+		p.Willpower = clampStat(100)
+		p.Dopamine = clampDopamine(p.Dopamine + 500)
 		p.Achievements = append(p.Achievements, "Победил финальное искушение")
 		p.AddExperience(200)
 		return true
 	} else {
 		// Поражение
-		p.Focus = ClampStat(30)
-		p.Willpower = ClampStat(40)
-		p.Dopamine = ClampDopamine(p.Dopamine - 300)
+		p.Focus = clampStat(30)
+		p.Willpower = clampStat(40)
+		p.Dopamine = clampDopamine(p.Dopamine - 300)
 		return false
 	}
 }
@@ -328,11 +328,11 @@ func (p *Player) CalculateScore() int {
 func (p *Player) ApplySkillBonuses() {
 	bonuses := p.SkillTree.GetTotalBonuses()
 
-	p.Focus = ClampStat(p.Focus + bonuses["focus"])
-	p.Willpower = ClampStat(p.Willpower + bonuses["willpower"])
-	p.GoKnowledge = ClampStat(p.GoKnowledge + bonuses["knowledge"])
-	p.Money = ClampMoney(p.Money + bonuses["money"])
-	p.Dopamine = ClampDopamine(p.Dopamine + bonuses["dopamine"])
+	p.Focus = clampStat(p.Focus + bonuses["focus"])
+	p.Willpower = clampStat(p.Willpower + bonuses["willpower"])
+	p.GoKnowledge = clampStat(p.GoKnowledge + bonuses["knowledge"])
+	p.Money = clampMoney(p.Money + bonuses["money"])
+	p.Dopamine = clampDopamine(p.Dopamine + bonuses["dopamine"])
 }
 
 // GetRating возвращает рейтинг игрока

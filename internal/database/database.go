@@ -1,4 +1,4 @@
-package main
+package database
 
 import (
 	"database/sql"
@@ -8,6 +8,9 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"focusgo/internal/models"
+	"focusgo/internal/validator"
 )
 
 // DB — глобальный экземпляр базы данных
@@ -150,9 +153,9 @@ func createTables() error {
 }
 
 // SavePlayer сохраняет игрока в базу данных
-func SavePlayer(player *Player) error {
+func SavePlayer(player *models.Player) error {
 	// Валидация перед сохранением
-	if err := ValidateBeforeSave(player); err != nil {
+	if err := validator.ValidateBeforeSave(player); err != nil {
 		log.Printf("⚠️  WARNING: Ошибки валидации перед сохранением: %v", err)
 	}
 
@@ -205,7 +208,7 @@ func SavePlayer(player *Player) error {
 }
 
 // LoadPlayer загружает игрока из базы данных
-func LoadPlayer(chatID int64) (*Player, error) {
+func LoadPlayer(chatID int64) (*models.Player, error) {
 	query := `
 		SELECT chat_id, name, level, experience, go_knowledge, focus, willpower,
 		       money, dopamine, play_time, days_played, current_day, hour, game_active
@@ -215,7 +218,7 @@ func LoadPlayer(chatID int64) (*Player, error) {
 
 	row := DB.QueryRow(query, chatID)
 
-	player := &Player{}
+	player := &models.Player{}
 	var gameActive int
 
 	err := row.Scan(
@@ -245,8 +248,8 @@ func LoadPlayer(chatID int64) (*Player, error) {
 	player.GameActive = intToBool(gameActive)
 
 	// Инициализируем системы
-	player.SkillTree = NewSkillTree()
-	player.Quests = NewQuestSystem()
+	player.SkillTree = models.NewSkillTree()
+	player.Quests = models.NewQuestSystem()
 
 	// Загружаем навыки
 	if err = loadSkills(player); err != nil {
@@ -269,7 +272,7 @@ func LoadPlayer(chatID int64) (*Player, error) {
 	}
 
 	// Валидация после загрузки
-	if err = ValidateAfterLoad(player); err != nil {
+	if err = validator.ValidateAfterLoad(player); err != nil {
 		log.Printf("⚠️  WARNING: Ошибки валидации после загрузки: %v", err)
 	}
 
@@ -281,7 +284,7 @@ func LoadPlayer(chatID int64) (*Player, error) {
 }
 
 // saveSkills сохраняет навыки игрока
-func saveSkills(player *Player) error {
+func saveSkills(player *models.Player) error {
 	query := `
 		INSERT OR REPLACE INTO skills (chat_id, skill_id, level, unlocked)
 		VALUES (?, ?, ?, ?)
@@ -303,7 +306,7 @@ func saveSkills(player *Player) error {
 }
 
 // loadSkills загружает навыки игрока
-func loadSkills(player *Player) error {
+func loadSkills(player *models.Player) error {
 	query := `SELECT skill_id, level, unlocked FROM skills WHERE chat_id = ?`
 
 	rows, err := DB.Query(query, player.ChatID)
@@ -331,7 +334,7 @@ func loadSkills(player *Player) error {
 }
 
 // saveQuests сохраняет квесты игрока
-func saveQuests(player *Player) error {
+func saveQuests(player *models.Player) error {
 	query := `
 		INSERT OR REPLACE INTO quests (chat_id, quest_id, progress, completed, deadline)
 		VALUES (?, ?, ?, ?, ?)
@@ -354,7 +357,7 @@ func saveQuests(player *Player) error {
 }
 
 // loadQuests загружает квесты игрока
-func loadQuests(player *Player) error {
+func loadQuests(player *models.Player) error {
 	query := `SELECT quest_id, progress, completed, deadline FROM quests WHERE chat_id = ?`
 
 	rows, err := DB.Query(query, player.ChatID)
@@ -388,7 +391,7 @@ func loadQuests(player *Player) error {
 }
 
 // saveAchievements сохраняет достижения
-func saveAchievements(player *Player) error {
+func saveAchievements(player *models.Player) error {
 	// Сначала удаляем старые достижения
 	_, err := DB.Exec("DELETE FROM achievements WHERE chat_id = ?", player.ChatID)
 	if err != nil {
@@ -408,7 +411,7 @@ func saveAchievements(player *Player) error {
 }
 
 // loadAchievements загружает достижения
-func loadAchievements(player *Player) error {
+func loadAchievements(player *models.Player) error {
 	query := `SELECT achievement FROM achievements WHERE chat_id = ? ORDER BY created_at`
 
 	rows, err := DB.Query(query, player.ChatID)
@@ -431,7 +434,7 @@ func loadAchievements(player *Player) error {
 }
 
 // loadDayStreak загружает серию дней
-func loadDayStreak(player *Player) error {
+func loadDayStreak(player *models.Player) error {
 	query := `SELECT current_streak, best_streak, last_quest_date, total_quests_completed 
 			  FROM day_streaks WHERE chat_id = ?`
 
@@ -460,7 +463,7 @@ func loadDayStreak(player *Player) error {
 }
 
 // saveDayStreak сохраняет серию дней
-func saveDayStreak(player *Player) error {
+func saveDayStreak(player *models.Player) error {
 	query := `
 		INSERT OR REPLACE INTO day_streaks 
 		(chat_id, current_streak, best_streak, total_quests_completed)
@@ -587,7 +590,7 @@ func intToBool(i int) bool {
 }
 
 // PlayerToJSON экспортирует игрока в JSON
-func PlayerToJSON(player *Player) ([]byte, error) {
+func PlayerToJSON(player *models.Player) ([]byte, error) {
 	data := map[string]interface{}{
 		"chat_id":      player.ChatID,
 		"name":         player.Name,
@@ -615,13 +618,13 @@ func PlayerToJSON(player *Player) ([]byte, error) {
 }
 
 // PlayerFromJSON импортирует игрока из JSON
-func PlayerFromJSON(data []byte) (*Player, error) {
+func PlayerFromJSON(data []byte) (*models.Player, error) {
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return nil, err
 	}
 
-	player := &Player{
+	player := &models.Player{
 		ChatID:      int64(jsonData["chat_id"].(float64)),
 		Name:        jsonData["name"].(string),
 		Level:       int(jsonData["level"].(float64)),
@@ -650,8 +653,8 @@ func PlayerFromJSON(data []byte) (*Player, error) {
 	}
 
 	// Инициализируем системы
-	player.SkillTree = NewSkillTree()
-	player.Quests = NewQuestSystem()
+	player.SkillTree = models.NewSkillTree()
+	player.Quests = models.NewQuestSystem()
 
 	// Восстанавливаем навыки
 	if skills, ok := jsonData["skills"].(map[string]interface{}); ok {
