@@ -28,6 +28,7 @@ var (
 	questSystems = make(map[int64]*game.QuestSystem)
 	skillTrees   = make(map[int64]*game.SkillTree)
 	achievementSystems = make(map[int64]*game.AchievementSystem)
+	quizSessions = make(map[int64]*game.QuizSession)
 )
 
 func main() {
@@ -91,6 +92,7 @@ func setupMenuButton() {
 		tgbotapi.BotCommand{Command: "skills", Description: "Навыки"},
 		tgbotapi.BotCommand{Command: "quests", Description: "Квесты"},
 		tgbotapi.BotCommand{Command: "stats", Description: "Статистика"},
+		tgbotapi.BotCommand{Command: "quiz", Description: "Go-викторина"},
 		tgbotapi.BotCommand{Command: "backup", Description: "Бэкап БД"},
 		tgbotapi.BotCommand{Command: "help", Description: "Справка"},
 	)
@@ -155,6 +157,8 @@ func handleCommand(message *tgbotapi.Message) {
 		showLeaderboard(chatID)
 	case "achievements":
 		showAchievements(chatID)
+	case "quiz":
+		showQuizMenu(chatID)
 	case "backup":
 		handleBackup(chatID)
 	case "help":
@@ -272,11 +276,14 @@ func createMainMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("🌳 Навыки", "cb_skills"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧩 Квиз", "cb_quiz"),
 			tgbotapi.NewInlineKeyboardButtonData("📊 Статистика", "cb_stats"),
-			tgbotapi.NewInlineKeyboardButtonData("👤 Профиль", "cb_profile"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👤 Профиль", "cb_profile"),
 			tgbotapi.NewInlineKeyboardButtonData("💾 Сохранить", "cb_save"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🌙 Завершить день", "cb_end_day"),
 		),
 	)
@@ -353,9 +360,36 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 		
 	case "cb_quests":
 		showQuests(chatID)
-		
+
 	case "cb_skills":
 		showSkills(chatID)
+
+	case "cb_quiz":
+		showQuizMenu(chatID)
+
+	case "cb_quiz_start":
+		startQuiz(chatID, "mixed", 10)
+
+	case "cb_quiz_basics":
+		startQuiz(chatID, "basics", 5)
+
+	case "cb_quiz_concurrency":
+		startQuiz(chatID, "concurrency", 5)
+
+	case "cb_quiz_interfaces":
+		startQuiz(chatID, "interfaces", 5)
+
+	case "cb_quiz_errors":
+		startQuiz(chatID, "errors", 5)
+
+	case "cb_quiz_types":
+		startQuiz(chatID, "types", 5)
+
+	case "cb_quiz_answer":
+		handleQuizAnswer(chatID)
+
+	case "cb_quiz_skip":
+		handleQuizSkip(chatID)
 
 	case "cb_stats":
 		showStats(chatID)
@@ -370,13 +404,13 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 		// Извлекаем ID навыка из callback_data
 		skillID := data[11:] // убираем "cb_upgrade_"
 		handleUpgradeSkill(chatID, skillID)
-		
+
 	case "cb_save":
 		if state != nil {
 			state.SaveGameState()
 			bot.Send(tgbotapi.NewMessage(chatID, "💾 Прогресс сохранён!"))
 		}
-		
+
 	case "cb_end_day":
 		if state != nil {
 			// Финальная битва
@@ -402,7 +436,7 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 				if reward > 0 {
 					bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("💰 Получено %d очков навыков за квесты!", reward)))
 				}
-				
+
 				// Проверяем достижения
 				as, _ := game.LoadAchievementSystem(chatID)
 				if as != nil {
@@ -420,12 +454,23 @@ func handleCallback(callback *tgbotapi.CallbackQuery) {
 
 			bot.Send(tgbotapi.NewMessage(chatID, battleMsg))
 		}
-		
+
 	case "cb_main_menu":
 		showMainMenu(chatID)
-		
+
 	case "cb_back":
 		bot.Send(tgbotapi.NewMessage(chatID, "🔙 Возврат к командам. Используйте /menu"))
+
+	default:
+		// Обработка ответов на викторину (cb_quiz_answer_0, cb_quiz_answer_1, etc.)
+		if len(data) > 16 && data[:16] == "cb_quiz_answer_" {
+			answerIndex := data[16] - '0' // Извлекаем цифру (0-3)
+			handleQuizAnswerWithIndex(chatID, int(answerIndex))
+			return
+		}
+		
+		// Обработка неизвестных callback
+		log.Printf("⚠️  Неизвестный callback: %s", data)
 	}
 }
 
@@ -708,6 +753,236 @@ func handleBackup(chatID int64) {
 	bot.Send(tgbotapi.NewMessage(chatID, text))
 }
 
+// showQuizMenu показывает меню викторины
+func showQuizMenu(chatID int64) {
+	text := `🧩 <b>GO-ВИКТОРИНА</b>
+━━━━━━━━━━━━━━━━━━━━
+
+Проверь свои знания языка Go!
+
+📚 <b>Доступные категории:</b>
+
+🔀 <b>Все темы</b> — 50 вопросов (10 в игре)
+📘 <b>Основы Go</b> — 10 вопросов
+⚡ <b>Конкурентность</b> — 10 вопросов
+🔌 <b>Интерфейсы</b> — 10 вопросов
+⚠️ <b>Обработка ошибок</b> — 10 вопросов
+📊 <b>Типы данных</b> — 10 вопросов
+
+💡 <b>Как играть:</b>
+1. Выбери категорию
+2. Ответь на все вопросы
+3. Получи опыт и знания!
+
+Выберите категорию:`
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔀 Все темы (10)", "cb_quiz_start"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📘 Основы Go", "cb_quiz_basics"),
+			tgbotapi.NewInlineKeyboardButtonData("⚡ Конкурентность", "cb_quiz_concurrency"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔌 Интерфейсы", "cb_quiz_interfaces"),
+			tgbotapi.NewInlineKeyboardButtonData("⚠️ Ошибки", "cb_quiz_errors"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📊 Типы данных", "cb_quiz_types"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+		),
+	)
+
+	bot.Send(msg)
+}
+
+// startQuiz запускает викторину
+func startQuiz(chatID int64, category string, count int) {
+	// Создаём новую сессию
+	session := game.NewQuizSession(chatID, category, count)
+	quizSessions[chatID] = session
+
+	categoryName := game.GetCategoryName(category)
+	text := fmt.Sprintf(`🧩 <b>ВИКТОРИНА НАЧАТА!</b>
+━━━━━━━━━━━━━━━━━━━━
+
+📚 Категория: %s
+❓ Вопросов: %d
+
+💪 Удачи!`, categoryName, count)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+
+	bot.Send(msg)
+
+	// Показываем первый вопрос
+	showQuizQuestion(chatID)
+}
+
+// showQuizQuestion показывает текущий вопрос
+func showQuizQuestion(chatID int64) {
+	session, exists := quizSessions[chatID]
+	if !exists || session.IsFinished() {
+		showQuizResults(chatID)
+		return
+	}
+
+	question := session.GetCurrentQuestion()
+	if question == nil {
+		showQuizResults(chatID)
+		return
+	}
+
+	difficulty := ""
+	switch question.Difficulty {
+	case 1:
+		difficulty = "🟢 Лёгкий"
+	case 2:
+		difficulty = "🟡 Средний"
+	case 3:
+		difficulty = "🔴 Сложный"
+	}
+
+	text := fmt.Sprintf(`📝 <b>ВОПРОС %d/%d</b>
+━━━━━━━━━━━━━━━━━━━━
+
+%s
+
+%s | ✨ Награда: %d опыта
+
+Выберите правильный ответ:`,
+		session.CurrentIndex+1, session.TotalCount,
+		question.Question,
+		difficulty, question.XPReward)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+
+	// Создаём клавиатуру с вариантами ответов
+	keyboard := make([][]tgbotapi.InlineKeyboardButton, 4)
+	for i, option := range question.Options {
+		keyboard[i] = tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				fmt.Sprintf("%c) %s", 'A'+i, option),
+				fmt.Sprintf("cb_quiz_answer_%d", i),
+			),
+		)
+	}
+	keyboard = append(keyboard, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("❌ Пропустить", "cb_quiz_skip"),
+	))
+
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+	bot.Send(msg)
+}
+
+// handleQuizAnswer обрабатывает ответ на вопрос
+func handleQuizAnswer(chatID int64) {
+	// Показываем следующий вопрос
+	showQuizQuestion(chatID)
+}
+
+// handleQuizAnswerWithIndex обрабатывает ответ с индексом
+func handleQuizAnswerWithIndex(chatID int64, answerIndex int) {
+	session, exists := quizSessions[chatID]
+	if !exists {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Сессия викторины не найдена"))
+		return
+	}
+
+	// Обрабатываем ответ
+	isCorrect, result, xp := session.AnswerQuestion(answerIndex)
+
+	// Отправляем результат
+	resultMsg := fmt.Sprintf("%s\n\n✨ +%d опыта", result, xp)
+	if !isCorrect {
+		resultMsg = result
+	}
+
+	msg := tgbotapi.NewMessage(chatID, resultMsg)
+	msg.ParseMode = "HTML"
+	bot.Send(msg)
+
+	// Показываем следующий вопрос через небольшую паузу
+	// (в реальном боте можно добавить задержку)
+	showQuizQuestion(chatID)
+}
+
+// handleQuizSkip обрабатывает пропуск вопроса
+func handleQuizSkip(chatID int64) {
+	session, exists := quizSessions[chatID]
+	if !exists {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Сессия викторины не найдена"))
+		return
+	}
+
+	question := session.GetCurrentQuestion()
+	if question == nil {
+		showQuizResults(chatID)
+		return
+	}
+
+	// Пропускаем вопрос без начисления опыта
+	session.CurrentIndex++
+
+	text := fmt.Sprintf(`⏭️ <b>ВОПРОС ПРОПУЩЕН</b>
+
+Правильный ответ был: %s
+
+📘 <b>Объяснение:</b>
+%s`,
+		question.Options[question.CorrectAnswer], question.Explanation)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	bot.Send(msg)
+
+	// Показываем следующий вопрос
+	showQuizQuestion(chatID)
+}
+
+// showQuizResults показывает результаты викторины
+func showQuizResults(chatID int64) {
+	session, exists := quizSessions[chatID]
+	if !exists {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Сессия викторины не найдена"))
+		return
+	}
+
+	text := session.GetResults()
+
+	// Начисляем опыт игроку
+	state, _ := game.LoadGameState(chatID)
+	if state != nil {
+		state.AddExperience(session.TotalXP)
+		state.SaveGameState()
+		gameStates[chatID] = state
+
+		text += fmt.Sprintf("\n\n✨ Опыт добавлен в ваш профиль!")
+	}
+
+	// Удаляем сессию
+	delete(quizSessions, chatID)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧩 Ещё раз", "cb_quiz"),
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Главное меню", "cb_main_menu"),
+		),
+	)
+
+	bot.Send(msg)
+}
+
+
 func sendHelp(chatID int64) {
 	text := `📖 <b>СПРАВКА</b>
 
@@ -717,6 +992,7 @@ func sendHelp(chatID int64) {
 /profile — Твой профиль
 /skills — Дерево навыков
 /quests — Ежедневные квесты
+/quiz — Go-викторина (проверка знаний)
 /stats — Статистика
 /leaderboard — Таблица лидеров
 /achievements — Достижения
@@ -728,10 +1004,11 @@ func sendHelp(chatID int64) {
 2. Изучай Go и получай опыт
 3. Выполняй ежедневные квесты
 4. Сопротивляйся искушениям
-5. Заверши день победой над боссом
-6. Улучшай навыки и получай бонусы
-7. Соревнуйся с другими в таблице лидеров
-8. Разблокируй достижения!
+5. Пройди Go-викторину для проверки знаний
+6. Заверши день победой над боссом
+7. Улучшай навыки и получай бонусы
+8. Соревнуйся с другими в таблице лидеров
+9. Разблокируй достижения!
 
 <b>Уведомления:</b>
 • 9:00 — Напоминание о квестах
