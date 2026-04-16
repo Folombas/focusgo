@@ -95,7 +95,7 @@ func LoadGameState(chatID int64) (*GameState, error) {
 	return state, nil
 }
 
-// SaveGameState сохраняет состояние игры в БД
+// SaveGameState сохраняет состояние игры в Базу Данных
 func (s *GameState) SaveGameState() error {
 	query := `
 		INSERT OR REPLACE INTO players 
