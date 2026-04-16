@@ -57,7 +57,7 @@ func NewGameState(chatID int64, name string) *GameState {
 	}
 }
 
-// LoadGameState загружает состояние игры из БД
+// LoadGameState загружает состояние игры из Базы данных
 func LoadGameState(chatID int64) (*GameState, error) {
 	query := `
 		SELECT chat_id, name, level, experience, go_knowledge, focus, willpower,
