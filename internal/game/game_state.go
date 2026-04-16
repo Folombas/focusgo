@@ -11,29 +11,29 @@ import (
 
 // GameState представляет состояние игры игрока
 type GameState struct {
-	ChatID       int64
-	Name         string
-	Level        int
-	Experience   int
-	NextLevelXP  int
-	GoKnowledge  int
-	Focus        int
-	Willpower    int
-	Money        int
-	Dopamine     int
-	PlayTime     int // минуты
-	DaysPlayed   int
-	CurrentDay   int
-	CurrentHour  int // 8-23
-	IsPlaying    bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	
+	ChatID      int64
+	Name        string
+	Level       int
+	Experience  int
+	NextLevelXP int
+	GoKnowledge int
+	Focus       int
+	Willpower   int
+	Money       int
+	Dopamine    int
+	PlayTime    int // минуты
+	DaysPlayed  int
+	CurrentDay  int
+	CurrentHour int // 8-23
+	IsPlaying   bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+
 	// Бонусы от навыков
 	SkillBonuses map[string]int // focus, willpower, knowledge, money, dopamine
 }
 
-// NewGameState создаёт новое состояние игры
+// NewGameState даёт нам новое состояние игры
 func NewGameState(chatID int64, name string) *GameState {
 	return &GameState{
 		ChatID:       chatID,
@@ -176,7 +176,7 @@ func (s *GameState) AddExperience(xp int) (int, int) {
 		// Бонус за уровень
 		s.Focus = 100
 		s.Willpower = 100
-		
+
 		// Очки навыков: 2 + 1 за каждые 5 уровней
 		points := 2 + (s.Level / 5)
 		skillPointsEarned += points
